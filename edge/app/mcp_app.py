@@ -217,11 +217,19 @@ def _tool(**kwargs):
 )
 async def node_status(ctx: Context) -> NodeStatus:
     """Check that the chain node behind this service is healthy and fully synced:
-    its version, block height, header height, peer connections and sync state
-    (`synced` true once block == header height). It is an Emercoin node.
-    Read-only, no sign-in required, no parameters. Call it first in a session to
-    confirm the node is healthy and fully synced before trusting `read_record` or
-    writing with `register_identity` / `store_memory`."""
+    its version, block height, header height, peer connections and sync state.
+    It is an Emercoin node. Read-only, no sign-in required, no parameters.
+
+    `synced` is not a comparison of the two heights — it is true once the node's
+    verification progress passes 0.9999, so it can still be false while `blocks`
+    and `headers` already match. Trust that field, not the arithmetic. While it is
+    false, a `read_record` may reflect an older state of the chain; writes still
+    work, they simply confirm later.
+
+    Also the way to make sense of expiry: `expires_in` on a record is denominated
+    in blocks, and this tool reports the current height. The chain charges a term
+    day as a flat 175 blocks while actually producing roughly 122 a day, so a term
+    lasts about 1.4 times its nominal length in wall-clock time."""
     await _record(ctx, "node_status", _principal_optional())
     return await _adapter.status()  # type: ignore[return-value]
 
@@ -272,7 +280,17 @@ async def whoami(ctx: Context) -> WhoAmI:
     anonymous session gets `{authenticated: false}` with a hint (not an error),
     a signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login
     and tariff. Call it to confirm who you are before `register_identity` /
-    `store_memory`; an anonymous caller must sign in (GitHub OAuth) first."""
+    `store_memory`; an anonymous caller must sign in (GitHub OAuth) first.
+
+    `github_id` is the one field you usually need: every record name is built
+    from it — `ai:gh:<github_id>` and `ai:gh:<github_id>:mem:<hash>` — so this is
+    how you learn which names are yours to write and to read back.
+
+    `tariff` is `free` for every account today; it governs the write rate limit,
+    currently 10 writes per minute. Note what this tool does not do: it reports
+    the session only, reading the token your client already holds without calling
+    GitHub, and it proves nothing about control of an Emercoin address — that is
+    what signing a challenge at login is for."""
     p = _principal_optional()
     await _record(ctx, "whoami", p)
     if p is None:

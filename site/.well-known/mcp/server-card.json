@@ -18,7 +18,7 @@
     {
       "name": "node_status",
       "title": "Node status",
-      "description": "Check that the chain node behind this service is healthy and fully synced:\nits version, block height, header height, peer connections and sync state\n(`synced` true once block == header height). It is an Emercoin node.\nRead-only, no sign-in required, no parameters. Call it first in a session to\nconfirm the node is healthy and fully synced before trusting `read_record` or\nwriting with `register_identity` / `store_memory`.",
+      "description": "Check that the chain node behind this service is healthy and fully synced:\nits version, block height, header height, peer connections and sync state.\nIt is an Emercoin node. Read-only, no sign-in required, no parameters.\n\n`synced` is not a comparison of the two heights — it is true once the node's\nverification progress passes 0.9999, so it can still be false while `blocks`\nand `headers` already match. Trust that field, not the arithmetic. While it is\nfalse, a `read_record` may reflect an older state of the chain; writes still\nwork, they simply confirm later.\n\nAlso the way to make sense of expiry: `expires_in` on a record is denominated\nin blocks, and this tool reports the current height. The chain charges a term\nday as a flat 175 blocks while actually producing roughly 122 a day, so a term\nlasts about 1.4 times its nominal length in wall-clock time.",
       "inputSchema": {
         "properties": {},
         "title": "node_statusArguments",
@@ -312,7 +312,7 @@
     {
       "name": "whoami",
       "title": "Who am I",
-      "description": "Report the current session's identity. Read-only, no sign-in required: an\nanonymous session gets `{authenticated: false}` with a hint (not an error),\na signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login\nand tariff. Call it to confirm who you are before `register_identity` /\n`store_memory`; an anonymous caller must sign in (GitHub OAuth) first.",
+      "description": "Report the current session's identity. Read-only, no sign-in required: an\nanonymous session gets `{authenticated: false}` with a hint (not an error),\na signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login\nand tariff. Call it to confirm who you are before `register_identity` /\n`store_memory`; an anonymous caller must sign in (GitHub OAuth) first.\n\n`github_id` is the one field you usually need: every record name is built\nfrom it — `ai:gh:<github_id>` and `ai:gh:<github_id>:mem:<hash>` — so this is\nhow you learn which names are yours to write and to read back.\n\n`tariff` is `free` for every account today; it governs the write rate limit,\ncurrently 10 writes per minute. Note what this tool does not do: it reports\nthe session only, reading the token your client already holds without calling\nGitHub, and it proves nothing about control of an Emercoin address — that is\nwhat signing a challenge at login is for.",
       "inputSchema": {
         "properties": {},
         "title": "whoamiArguments",
