@@ -1,0 +1,102 @@
+# Single-box public deploy (DO droplet): node + adapter + edge + redis + caddy.
+#   docker compose -f docker-compose.droplet.yaml --env-file .env pull
+#   docker compose -f docker-compose.droplet.yaml --env-file .env up -d
+#
+# Differences vs the dev/prod compose:
+#  - emc publishes NO host ports (RPC/p2p stay on the internal docker network).
+#  - adapter + edge run from published images, deployed on release by CI over SSH
+#    (deploy/deploy-service.sh) — one pull+recreate per release, no Watchtower and
+#    no registry polling, so no rollout wait and no Docker Hub rate-limit cost.
+#  - emc (emercoin/core) is released manually (run ./redeploy.sh after a node-v*).
+#  - caddy fronts edge on 80/443; origin is firewalled to Cloudflare IPs.
+#
+# Requires deploy/.env (chmod 600) with ADAPTER_INTERNAL_KEY, EDGE_JWT_SECRET,
+# EDGE_GITHUB_CLIENT_ID, EDGE_GITHUB_CLIENT_SECRET, and node/emercoin.conf present.
+name: emercoin
+
+# Container stdout has no size limit under the default json-file driver, and it
+# grows until the disk does. Cap every service here rather than in a daemon-wide
+# /etc/docker/daemon.json: this is version-controlled, applies on the next
+# recreate, and needs no docker daemon restart.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+volumes:
+  blockchain_data:
+    name: emer_data
+    external: true
+  caddy_data:
+  caddy_config:
+  caddy_logs:
+
+services:
+  emc:
+    image: emercoin/core:0.8.5
+    container_name: emc
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - blockchain_data:/srv/emercoind
+      - ../node/emercoin.conf:/srv/emercoind/emercoin.conf:ro
+      - /etc/localtime:/etc/localtime:ro
+    stop_grace_period: 40s
+    command: /bin/emercoind -datadir=/srv/emercoind -conf=/srv/emercoind/emercoin.conf -printtoconsole -dbcache=64 -maxconnections=16
+
+  redis:
+    image: redis:7-alpine
+    container_name: emer-redis
+    restart: unless-stopped
+    logging: *logging
+
+  adapter:
+    image: emercoin/rest-api:latest
+    container_name: emer-adapter
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      ADAPTER_RPC_URL: http://emc:6662
+      ADAPTER_RPC_USER: emcrpc
+      ADAPTER_RPC_PASSWORD: emcpass
+      ADAPTER_INTERNAL_KEY: ${ADAPTER_INTERNAL_KEY:-}
+    depends_on: [emc]
+
+  edge:
+    image: emercoin/edge:latest
+    container_name: emer-edge
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      EDGE_ADAPTER_URL: http://emer-adapter:8000
+      # The OAuth issuer advertised in the MCP well-known metadata. The fallback
+      # must be a real URL, not empty: compose passes "" for an unset variable,
+      # pydantic-settings treats that as *set*, and AnyHttpUrl("") raises at
+      # import — the edge would not start.
+      EDGE_PUBLIC_URL: ${EDGE_PUBLIC_URL:-https://api.steledger.com}
+      EDGE_ADAPTER_KEY: ${ADAPTER_INTERNAL_KEY:-}
+      EDGE_REDIS_URL: redis://redis:6379/0
+      EDGE_JWT_SECRET: ${EDGE_JWT_SECRET:-}
+      EDGE_GITHUB_CLIENT_ID: ${EDGE_GITHUB_CLIENT_ID:-}
+      EDGE_GITHUB_CLIENT_SECRET: ${EDGE_GITHUB_CLIENT_SECRET:-}
+      EDGE_DEV_LOGIN_ENABLED: "false"
+      EDGE_WEB_LOGIN_ENABLED: ${EDGE_WEB_LOGIN_ENABLED:-false}
+      EDGE_GITHUB_REDIRECT_URI: ${EDGE_GITHUB_REDIRECT_URI:-}
+    depends_on: [redis, adapter]
+
+  caddy:
+    image: caddy:2
+    container_name: emer-caddy
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../site:/srv/site:ro          # static corpus (index, login, css) — Caddy serves + CF caches
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy   # access logs, rolled by Caddy (see Caddyfile)
+    depends_on: [edge]

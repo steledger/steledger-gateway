@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.emercoin/emercoin-agent",
+  "title": "Emercoin Agent",
+  "description": "On-chain identity and durable memory for AI agents on the Emercoin blockchain (NVS).",
+  "version": "0.2.0",
+  "repository": {
+    "url": "https://github.com/steledger/steledger-gateway",
+    "source": "github",
+    "subfolder": "mcp_server"
+  },
+  "websiteUrl": "https://api.steledger.com",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "docker.io/emercoin/mcp:0.1.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "GATEWAY_URL",
+          "description": "Base URL of the edge gateway the MCP server talks to",
+          "default": "https://api.steledger.com"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.steledger.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <session JWT> from https://api.steledger.com/login — required for write tools; read tools are open",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
