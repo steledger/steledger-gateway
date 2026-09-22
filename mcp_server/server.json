@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.emercoin/emercoin-agent",
-  "title": "Emercoin Agent",
-  "description": "On-chain identity and durable memory for AI agents on the Emercoin blockchain (NVS).",
-  "version": "0.2.0",
+  "name": "io.github.steledger/steledger",
+  "title": "Steledger",
+  "description": "Durable identity and memory for AI agents: an agent claims an on-chain identity and anchors hashes of what it knows, verifiable by anyone. Anchored on the Emercoin blockchain (NVS).",
+  "version": "0.3.0",
   "repository": {
     "url": "https://github.com/steledger/steledger-gateway",
     "source": "github",
@@ -13,8 +13,10 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "docker.io/emercoin/mcp:0.1.0",
-      "transport": { "type": "stdio" },
+      "identifier": "ghcr.io/steledger/mcp:latest",
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "GATEWAY_URL",

@@ -1,6 +1,6 @@
-# MCP tool quality — TDQS run (emercoin-agent)
+# MCP tool quality — TDQS run (steledger)
 
-Records a **TDQS** (Tool Definition Quality Score) pass over the `emercoin-agent`
+Records a **TDQS** (Tool Definition Quality Score) pass over the `steledger`
 MCP server (the edge's identity + memory tools). TDQS grades how well each tool
 *definition* tells an agent what the tool does and when to use it — it drives
 tool-selection quality, not runtime behaviour.

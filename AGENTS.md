@@ -113,7 +113,7 @@ not the agent-facing edge — internal operator concerns gated only by `X-Intern
    ```json
    {
      "mcpServers": {
-       "emercoin-agent": {
+       "steledger": {
          "command": "python",
          "args": ["mcp_server/server.py"],
          "env": { "GATEWAY_URL": "http://localhost:8000" }
