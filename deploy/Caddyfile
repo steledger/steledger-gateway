@@ -49,6 +49,52 @@
 	}
 }
 
+# steledger.com — the static front door, moved off GitHub Pages 2026-09-22.
+# Built locally into dist/ and committed; the droplet holds a checkout and Caddy
+# serves it straight from disk. Nothing is generated here.
+#
+# Cache-Control is set explicitly because Cloudflare's own Browser Cache TTL on
+# this zone was four hours: a stylesheet or favicon change stayed invisible that
+# long while the origin already served the new file. Cloudflare respects an
+# origin header, so five minutes for pages and a day for images gets us back to
+# roughly what Pages behaved like, without turning caching off.
+steledger.com {
+	tls internal
+	import accesslog steledger
+	encode gzip
+	root * /srv/steledger
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=86400"
+	header Cache-Control "public, max-age=300"
+
+	handle_errors {
+		rewrite * /404.html
+		file_server
+	}
+
+	try_files {path} {path}.html {path}/index.html
+	file_server
+}
+
+http://steledger.com {
+	import accesslog steledger
+	encode gzip
+	root * /srv/steledger
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=86400"
+	header Cache-Control "public, max-age=300"
+
+	handle_errors {
+		rewrite * /404.html
+		file_server
+	}
+
+	try_files {path} {path}.html {path}/index.html
+	file_server
+}
+
 # The canonical host. Note the edge advertises exactly one OAuth issuer
 # (EDGE_PUBLIC_URL), so only one of these two hostnames is a working MCP sign-in
 # target at a time — see MIGRATION.md phase 2.
