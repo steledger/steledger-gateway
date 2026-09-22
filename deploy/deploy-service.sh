@@ -13,6 +13,14 @@
 #   command="/opt/emer-ai-tools/deploy/deploy-service.sh ${SSH_ORIGINAL_COMMAND##* }",no-pty,no-port-forwarding ssh-ed25519 AAAA... ci-deploy
 set -euo pipefail
 
+# Serialise the deploy paths. CI's deploy-service.sh and the emer-deploy-sync
+# timer both git-pull this same checkout, and the timer fires every two minutes,
+# so they overlap sooner or later — git then fails to lock
+# refs/remotes/origin/main and the deploy dies halfway. Observed twice on
+# 2026-09-22, each time looking like an unrelated git problem.
+exec 9>/var/lock/emer-deploy.lock
+flock -w 300 9 || { echo "another deploy holds /var/lock/emer-deploy.lock" >&2; exit 1; }
+
 svc="${1:-}"
 case "$svc" in
   edge|adapter) ;;                      # never roll node/redis/caddy from CI
