@@ -52,7 +52,7 @@ services:
     logging: *logging
 
   adapter:
-    image: emercoin/rest-api:latest
+    image: ghcr.io/steledger/rest-api:latest
     container_name: emer-adapter
     restart: unless-stopped
     logging: *logging
@@ -64,7 +64,7 @@ services:
     depends_on: [emc]
 
   edge:
-    image: emercoin/edge:latest
+    image: ghcr.io/steledger/edge:latest
     container_name: emer-edge
     restart: unless-stopped
     logging: *logging
