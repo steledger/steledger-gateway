@@ -160,13 +160,16 @@ class WriteResult(TypedDict):
 mcp = FastMCP(
     "emercoin-agent",
     instructions=(
-        "Use the Emercoin blockchain as an identity + memory layer for AI agents. "
-        "Read tools (node_status, read_record, whoami) are open to everyone — no "
+        "Give an AI agent a durable identity and a place to anchor what it knows, "
+        "as records on a public blockchain that no single vendor owns or can switch "
+        "off. Read tools (node_status, read_record, whoami) are open to everyone — no "
         "sign-in. Write tools (register_identity, store_memory) require a GitHub "
         "sign-in via OAuth, which your MCP client performs; on the FREE tier writes "
         "are rate-limited per minute. Typical flow: whoami → register_identity(address) "
-        "→ store_memory(hash) → read_record(name). Records read back as `pending` and "
-        "become `confirmed` after the next block (~10 min)."
+        "→ store_memory(hash) → read_record(name). A write reads back as `pending` and "
+        "becomes `confirmed` after the next block (~10 min). The substrate is Emercoin, "
+        "running since 2013 — named so that any record here can also be checked "
+        "independently in a public block explorer, without trusting this service."
     ),
     stateless_http=True,
     json_response=True,
@@ -213,8 +216,9 @@ def _tool(**kwargs):
     structured_output=True,
 )
 async def node_status(ctx: Context) -> NodeStatus:
-    """Report the Emercoin node's version, block height, header height, peer
-    connections and sync state (`synced` true once block == header height).
+    """Check that the chain node behind this service is healthy and fully synced:
+    its version, block height, header height, peer connections and sync state
+    (`synced` true once block == header height). It is an Emercoin node.
     Read-only, no sign-in required, no parameters. Call it first in a session to
     confirm the node is healthy and fully synced before trusting `read_record` or
     writing with `register_identity` / `store_memory`."""
@@ -240,9 +244,11 @@ async def read_record(
         )),
     ],
 ) -> NvsRecord:
-    """Read one Emercoin NVS (Name-Value Storage) record by its full name — an
+    """Read one on-chain record by its full name — an
     agent's identity (`ai:gh:<github_id>`) or a memory
     (`ai:gh:<github_id>:mem:<hash>`) written by `register_identity` / `store_memory`.
+    Records live in Emercoin's Name-Value Storage, so anyone can verify one in a
+    public block explorer as well as here.
     Returns the confirmed on-chain record, or a `pending` one still in the mempool —
     the `status` field ('confirmed' | 'pending') distinguishes them. A name is only
     held for a limited term, so check `expired` (and `expires_in`, in blocks) before
