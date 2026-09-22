@@ -6,8 +6,9 @@
 #   - push a tag `rest-api-v*` (e.g. rest-api-v0.0.1) -> tags {version}, {major.minor}, latest
 #   - manual run (workflow_dispatch) -> tags latest
 #
-# Requires repo secrets DOCKERHUB_USERNAME + DOCKERHUB_TOKEN (a Docker Hub access
-# token with write to the emercoin org).
+# Publishes to ghcr.io/steledger — the namespace follows this GitHub org, so the
+# built-in GITHUB_TOKEN is the only credential needed and no registry secret is
+# stored anywhere.
 name: Publish REST API image
 
 # Builds on push to main touching adapter/ (moves :latest + :sha, then deploys on
@@ -24,11 +25,14 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: emercoin/rest-api
+  IMAGE: ghcr.io/steledger/rest-api
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     # Surfaced into env so the deploy step can self-skip when SSH secrets are unset.
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -38,11 +42,12 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Image metadata (tags + labels)
         id: meta

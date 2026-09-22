@@ -1,5 +1,5 @@
 # Publish the edge image (agent-facing IAM: GitHub login, JWT, rate limit; source
-# in edge/) to Docker Hub, then deploy it on the droplet over SSH — CI pulls +
+# in edge/) to ghcr.io/steledger, then deploy it on the droplet over SSH — CI pulls +
 # recreates just this container on release. No Watchtower, no registry polling, no
 # rollout wait (the pull happens once per release, not on a timer).
 #
@@ -7,9 +7,10 @@
 #   - push a tag `edge-v*` (e.g. edge-v0.0.1) -> tags {version}, {major.minor}, latest
 #   - manual run (workflow_dispatch) -> tags latest
 #
-# Secrets: DOCKERHUB_USERNAME + DOCKERHUB_TOKEN (push to the emercoin org);
-# DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY (the SSH deploy — when unset the deploy
-# step is skipped, not failed, so the image still publishes).
+# Credentials: none for the registry — ghcr.io/steledger follows this GitHub org,
+# so the built-in GITHUB_TOKEN pushes it. DEPLOY_HOST / DEPLOY_USER /
+# DEPLOY_SSH_KEY drive the SSH deploy; when unset the deploy step is skipped, not
+# failed, so the image still publishes.
 name: Publish edge image
 
 # Builds on:
@@ -26,11 +27,14 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: emercoin/edge
+  IMAGE: ghcr.io/steledger/edge
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     # Surfaced into the env context so the deploy step can self-skip when the SSH
     # secrets aren't configured (the `secrets` context isn't usable in `if:`).
     env:
@@ -42,11 +46,12 @@ jobs:
       # cross-arch emulation is needed. (rest-api keeps qemu — it's still multi-arch.)
       - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Image metadata (tags + labels)
         id: meta
