@@ -1,5 +1,5 @@
-![](https://github.com/steledger/steledger-gateway/blob/main/docs/docker.png)
-[![Smithery](https://img.shields.io/badge/Smithery-Verified-green?style=flat-square&logo=github)](https://smithery.ai/servers/mechnotech/emer-ai)
+
+[![smithery badge](https://img.shields.io/badge/Smithery-Verified-green?style=flat-square&logo=github)](https://smithery.ai/servers/mechnotech/steledger)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 # Steledger — identity & memory for AI agents (`steledger-gateway`)
@@ -42,7 +42,7 @@ The `steledger` MCP server is live — no self-hosting needed:
 
 - **Streamable HTTP:** `https://api.steledger.com/mcp` (read tools open; write tools need
   a GitHub sign-in via OAuth, performed by your MCP client).
-- **Smithery / stdio Docker image:** see the [Smithery listing](https://smithery.ai/servers/mechnotech/emer-ai)
+- **Smithery / stdio Docker image:** see the [Smithery listing](https://smithery.ai/servers/mechnotech/steledger)
   and `mcp_server/README.md`.
 
 Tools: `node_status`, `read_record` (open) and `register_identity`, `store_memory`,

@@ -1,5 +1,5 @@
 # Steledger — MCP server
-[![smithery badge](https://smithery.ai/badge/mechnotech/emer-ai)](https://smithery.ai/servers/mechnotech/emer-ai)
+[![Smithery](https://img.shields.io/badge/Smithery-Verified-green?style=flat-square&logo=github)](https://smithery.ai/servers/mechnotech/steledger)
 
 Thin MCP client over the **edge** gateway HTTP API. Lets an AI agent use the
 Emercoin chain as its identity + memory layer. (The edge is the agent-facing IAM
