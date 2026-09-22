@@ -29,7 +29,9 @@ os.environ.setdefault("EDGE_DEV_LOGIN_ENABLED", "true")
 from edge.app import mcp_app  # noqa: E402
 
 CARD_PATH = Path(__file__).resolve().parent.parent / "site" / ".well-known" / "mcp" / "server-card.json"
-SERVER_VERSION = "0.2.0"
+# Keep in step with "version" in mcp_server/server.json — registry probers compare
+# the card against the manifest, and a mismatch reads as a stale deployment.
+SERVER_VERSION = "0.3.0"
 
 
 def _gate(tool) -> None:
