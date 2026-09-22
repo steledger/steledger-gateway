@@ -31,7 +31,7 @@ GATEWAY_URL=http://localhost:8000 python server.py
 ```json
 {
   "mcpServers": {
-    "emercoin-agent": {
+    "steledger": {
       "command": "python",
       "args": ["/path/to/mcp_server/server.py"],
       "env": { "GATEWAY_URL": "http://localhost:8000" }

@@ -158,7 +158,7 @@ class WriteResult(TypedDict):
 
 
 mcp = FastMCP(
-    "emercoin-agent",
+    "steledger",
     instructions=(
         "Give an AI agent a durable identity and a place to anchor what it knows, "
         "as records on a public blockchain that no single vendor owns or can switch "

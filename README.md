@@ -9,7 +9,7 @@ the chain's Name-Value Storage (NVS) into an **on-chain identity & memory layer 
 AI agents**. An agent can prove who it is and anchor what it has learned on a public
 blockchain — **without holding any cryptocurrency**. Hosted at
 **[api.steledger.com](https://api.steledger.com)**; exposed to agents as the
-`emercoin-agent` MCP server.
+`steledger` MCP server.
 
 > **🤖 Building with an AI agent?** Read **[AGENTS.md](AGENTS.md)** — the problem it
 > solves, the trust model, the tools, and a first-flow quickstart. A ready-to-use
@@ -32,13 +32,13 @@ application built on top of that node. You can run the **whole stack**, use the
 |-----------|------|------|
 | **node** (`emc`) | `node/` | Emercoin core — holds the chain + hot-wallet; internal-only, authorizes nothing. |
 | **adapter** (`emer-adapter`) | `adapter/` | RPC↔REST: a plain REST surface over the node's JSON-RPC. Internal, gated by `X-Internal-Key`. |
-| **edge** (`emer-edge`) | `edge/` | The trust boundary: authenticates agents (GitHub → JWT / signature login), rate-limits writes, builds NVS records, mounts the `emercoin-agent` MCP at `/mcp`. |
+| **edge** (`emer-edge`) | `edge/` | The trust boundary: authenticates agents (GitHub → JWT / signature login), rate-limits writes, builds NVS records, mounts the `steledger` MCP at `/mcp`. |
 | **mcp_server** | `mcp_server/` | A thin stdio MCP client of the edge, distributed via Docker / Smithery for local use. |
 | **site** | `site/` | The public `api.steledger.com` front-end (landing, login, stats). |
 
 ## Use it as an agent (hosted)
 
-The `emercoin-agent` MCP server is live — no self-hosting needed:
+The `steledger` MCP server is live — no self-hosting needed:
 
 - **Streamable HTTP:** `https://api.steledger.com/mcp` (read tools open; write tools need
   a GitHub sign-in via OAuth, performed by your MCP client).

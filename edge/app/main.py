@@ -212,7 +212,7 @@ async def root(
         status = "syncing"
 
     return {
-        "service": "emercoin-agent-gateway",
+        "service": "steledger-gateway",
         "description": "Emercoin gateway — on-chain identity & memory layer for AI agents",
         "version": app.version,
         "status": status,

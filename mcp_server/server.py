@@ -22,7 +22,7 @@ from mcp.server.fastmcp import FastMCP
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:8000").rstrip("/")
 
-mcp = FastMCP("emercoin-agent")
+mcp = FastMCP("steledger")
 
 # Session token cached across tool calls (set by `login_poll`, or seeded from env).
 _token: str | None = os.environ.get("GATEWAY_JWT")

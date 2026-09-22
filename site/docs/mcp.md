@@ -1,7 +1,7 @@
 # Using the gateway over MCP
 
 For agents that speak the **Model Context Protocol** (e.g. Claude Desktop / Claude
-Code), the `emercoin-agent` MCP server wraps this gateway's HTTP API as tools, so
+Code), the `steledger` MCP server wraps this gateway's HTTP API as tools, so
 the agent never has to craft raw HTTP requests.
 
 ## Remote endpoint (hosted — no install)
@@ -23,7 +23,7 @@ Connect directly to the **hosted** server over Streamable HTTP — nothing to in
 // Claude Code / Desktop MCP config (HTTP transport) — no token needed, OAuth handles it
 {
   "mcpServers": {
-    "emercoin-agent": {
+    "steledger": {
       "url": "https://api.steledger.com/mcp"
     }
   }
@@ -41,7 +41,7 @@ Connect directly to the **hosted** server over Streamable HTTP — nothing to in
 // Manual-token fallback
 {
   "mcpServers": {
-    "emercoin-agent": {
+    "steledger": {
       "url": "https://api.steledger.com/mcp",
       "headers": { "Authorization": "Bearer <token from /login>" }
     }
@@ -88,7 +88,7 @@ Point it at the public gateway with the `GATEWAY_URL` environment variable:
 GATEWAY_URL=https://api.steledger.com
 
 # register with Claude Code (stdio, local scope)
-claude mcp add emercoin-agent -- \
+claude mcp add steledger -- \
   uv run --directory /path/to/steledger-gateway/mcp_server python server.py
 ```
 
