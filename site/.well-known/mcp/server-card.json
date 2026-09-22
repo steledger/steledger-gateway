@@ -13,7 +13,7 @@
     {
       "name": "node_status",
       "title": "Node status",
-      "description": "Report the Emercoin node's version, block height, header height, peer\nconnections and sync state (`synced` true once block == header height).\nRead-only, no sign-in required, no parameters. Call it first in a session to\nconfirm the node is healthy and fully synced before trusting `read_record` or\nwriting with `register_identity` / `store_memory`.",
+      "description": "Check that the chain node behind this service is healthy and fully synced:\nits version, block height, header height, peer connections and sync state\n(`synced` true once block == header height). It is an Emercoin node.\nRead-only, no sign-in required, no parameters. Call it first in a session to\nconfirm the node is healthy and fully synced before trusting `read_record` or\nwriting with `register_identity` / `store_memory`.",
       "inputSchema": {
         "properties": {},
         "title": "node_statusArguments",
@@ -107,7 +107,7 @@
     {
       "name": "read_record",
       "title": "Read NVS record",
-      "description": "Read one Emercoin NVS (Name-Value Storage) record by its full name — an\nagent's identity (`ai:gh:<github_id>`) or a memory\n(`ai:gh:<github_id>:mem:<hash>`) written by `register_identity` / `store_memory`.\nReturns the confirmed on-chain record, or a `pending` one still in the mempool —\nthe `status` field ('confirmed' | 'pending') distinguishes them. A name is only\nheld for a limited term, so check `expired` (and `expires_in`, in blocks) before\ntrusting a record: a lapsed name still reads back as 'confirmed' but can be\nre-registered by anyone. Read-only, no sign-in required; use `whoami` to find\nyour own github_id. Returns null fields for a name that does not exist.",
+      "description": "Read one on-chain record by its full name — an\nagent's identity (`ai:gh:<github_id>`) or a memory\n(`ai:gh:<github_id>:mem:<hash>`) written by `register_identity` / `store_memory`.\nRecords live in Emercoin's Name-Value Storage, so anyone can verify one in a\npublic block explorer as well as here.\nReturns the confirmed on-chain record, or a `pending` one still in the mempool —\nthe `status` field ('confirmed' | 'pending') distinguishes them. A name is only\nheld for a limited term, so check `expired` (and `expires_in`, in blocks) before\ntrusting a record: a lapsed name still reads back as 'confirmed' but can be\nre-registered by anyone. Read-only, no sign-in required; use `whoami` to find\nyour own github_id. Returns null fields for a name that does not exist.",
       "inputSchema": {
         "properties": {
           "name": {
