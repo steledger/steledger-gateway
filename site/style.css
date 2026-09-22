@@ -62,6 +62,7 @@ p.sub{margin:0 0 28px;color:var(--purple-mid);font-size:14px;line-height:1.55}
 .btn.ghost:hover{background:var(--field)}
 .links{display:flex;flex-direction:column;gap:10px;margin-top:8px}
 .foot{margin-top:22px;font-size:12px;color:var(--purple-mid);letter-spacing:.3px}
+.foot a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 ul.feat{text-align:left;color:var(--ink);font-size:14px;line-height:1.7;margin:0 0 24px;padding-left:20px}
 ul.feat b{color:var(--purple)}
 /* result page */
