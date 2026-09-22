@@ -70,8 +70,10 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
 - **Rate limit**: free tier allows 10 NVS writes/minute (a batch of N counts as N).
 - **Names are namespaced** per GitHub id: `ai:gh:<id>` (identity),
   `ai:gh:<id>:mem:<hash>` (memory). Don't write outside your namespace.
-- **Records expire** (default ~30 days) unless refreshed — re-register/re-store to
-  extend anything that must persist.
+- **Records expire** (default 1825 days, about seven years of wall clock)
+  unless refreshed. Re-writing adds to the remaining term. A lapsed name is
+  released and anyone may register it, so expiry is an impersonation risk, not
+  just data going stale — check `expired` / `expires_in` before trusting a read.
 
 ## If something fails
 

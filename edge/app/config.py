@@ -38,7 +38,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     # NVS record lifetime in days (records expire on Emercoin).
-    nvs_default_days: int = 30
+    # 1825 days as the chain counts them — it converts at a flat 175 blocks/day
+    # while actually producing ~122, so this is roughly seven years of wall clock.
+    # Long on purpose: an expired name can be re-registered by anyone, so a lapse
+    # is an impersonation window, not merely a record going stale. The fee barely
+    # moves with the term (it is square-rooted), and days accumulate on re-write,
+    # so this governs only the agents that fall silent.
+    nvs_default_days: int = 1825
 
     @model_validator(mode="after")
     def _require_strong_secret(self) -> "Settings":

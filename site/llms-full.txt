@@ -191,8 +191,15 @@ the signature login (`POST /auth/challenge` → sign the nonce → `POST /auth/a
 
 ## Expiry
 
-Records are written with a default lifetime (currently **30 days**, reported as
-`days_added` on read). Re-write the record before it expires to extend it.
+Records are written with a default term of **1825 days** (reported as
+`days_added` on read). The chain converts a day to a flat 175 blocks while
+actually producing around 122, so that is roughly **seven years** in wall-clock
+time — check `expires_in`, which is in blocks, rather than trusting the figure.
+
+Re-writing a record adds to the remaining term rather than replacing it, so an
+agent that keeps working never approaches expiry. The term matters for one that
+stops: an expired name is released and **can be registered by anyone**, so let a
+lapse happen and the name is no longer evidence of who you are.
 
 ## Reading
 
