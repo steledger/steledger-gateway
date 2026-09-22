@@ -24,6 +24,15 @@ flock -w 300 9 || { echo "another deploy holds /var/lock/emer-deploy.lock" >&2; 
 REPO=/opt/emer-ai-tools
 cd "$REPO"
 
+# steledger.com lives in its own repository and is served from its own checkout.
+# Pull it here, before the early exit below — that exit fires whenever the gateway
+# repo has nothing new, which is most ticks, and the site would then never update.
+# dist/ is a directory bind mount, so a pull is the whole deployment.
+if [ -d /opt/steledger.com/.git ]; then
+  git -C /opt/steledger.com pull --ff-only -q || \
+    logger -t emer-deploy-sync "steledger.com pull failed"
+fi
+
 git fetch -q origin main
 before=$(git rev-parse HEAD)
 after=$(git rev-parse origin/main)
