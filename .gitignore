@@ -8,6 +8,8 @@ venv
 .idea/
 bin
 wallet.dat
+*.pem
+key.pem
 emercoin.conf
 node/emercoin.conf
 .env
