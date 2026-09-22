@@ -63,6 +63,14 @@ async def build_card() -> dict:
         "serverInfo": {"name": mcp_app.mcp.name, "version": SERVER_VERSION},
         # Discovery + read tools are open; only write tools require the OAuth Bearer.
         "authentication": {"required": False, "schemes": ["oauth2"]},
+        # Declared empty on purpose, and not left out. This server takes no user
+        # configuration at all: there is no API key to paste, because sign-in is
+        # OAuth performed by the MCP client, and the read tools need nothing.
+        # Omitting the field makes Smithery warn that users will not be prompted
+        # for values — saying "there are none" is the accurate answer.
+        # (The stdio package is the one with a knob, GATEWAY_URL; that is declared
+        # in mcp_server/server.json for the MCP registry, not here.)
+        "configSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "tools": out,
         "resources": [],
         "prompts": [],
