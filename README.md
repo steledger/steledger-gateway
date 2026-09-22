@@ -2,7 +2,7 @@
 [![Smithery](https://img.shields.io/badge/Smithery-Verified-green?style=flat-square&logo=github)](https://smithery.ai/servers/mechnotech/emer-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-# Emercoin + AI agent tools (`steledger-gateway`)
+# Steledger — identity & memory for AI agents (`steledger-gateway`)
 
 A runnable Docker stack: an **Emercoin node** plus an **agent gateway** that turns
 the chain's Name-Value Storage (NVS) into an **on-chain identity & memory layer for

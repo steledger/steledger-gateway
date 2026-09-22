@@ -15,7 +15,7 @@ def _shell(inner: str, *, err: bool = False) -> str:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta name="robots" content="noindex">'
-        "<title>Emercoin Agent Gateway</title>"
+        "<title>Steledger</title>"
         '<link rel="stylesheet" href="/style.css"></head><body>'
         f'<div class="{cls}"><div class="brand"><b>&#9679;</b> emer<span>coin</span></div>'
         f"{inner}</div></body></html>"

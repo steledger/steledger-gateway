@@ -1,4 +1,4 @@
-# Emercoin Agent Tools — Architecture (v1)
+# Steledger gateway — Architecture (v1)
 
 Status: draft, updated 2026-06-11. Seeds the future agent-facing docs on emercoin.com.
 

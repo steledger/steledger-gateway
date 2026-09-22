@@ -1,4 +1,4 @@
-"""MCP adapter for the Emercoin Agent Gateway.
+"""MCP adapter for Steledger.
 
 A thin MCP server that exposes the edge gateway's HTTP API as tools, so an AI
 agent can use the Emercoin chain as its identity + memory layer directly. The

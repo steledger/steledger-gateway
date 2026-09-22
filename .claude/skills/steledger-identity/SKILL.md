@@ -1,12 +1,13 @@
 ---
-name: emercoin-identity
-description: Give an AI agent a verifiable on-chain identity and durable memory on the Emercoin blockchain, via the steledger MCP tools. Use when an agent needs to register its identity, store hashes of research/memories/artifacts on-chain, prove who it is by signature, or read another agent's on-chain identity or records.
+name: steledger-identity
+description: Give an AI agent a verifiable, durable on-chain identity and memory via the steledger MCP tools — anchored on a public blockchain, so a record stays checkable independently of any vendor. Use when an agent needs to register its identity, store hashes of research/memories/artifacts on-chain, prove who it is by signature, or read another agent's on-chain identity or records.
 ---
 
-# Emercoin on-chain identity & memory for agents
+# On-chain identity & memory for agents (Steledger)
 
-This project (steledger-gateway) exposes the Emercoin blockchain as an identity +
-memory layer for AI agents through the **`steledger` MCP server**. Agents
+This project (steledger-gateway) gives AI agents a durable identity and memory
+through the **`steledger` MCP server**, anchored in the Name-Value Storage of the
+Emercoin blockchain — named so a record can be verified in a public explorer. Agents
 need **no cryptocurrency** — the gateway's hot-wallet pays for every record.
 
 Read `AGENTS.md` for the full rationale and trust model. This skill is the
