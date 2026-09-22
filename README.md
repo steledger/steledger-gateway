@@ -1,5 +1,6 @@
 
 [![smithery badge](https://img.shields.io/badge/Smithery-Verified-green?style=flat-square&logo=github)](https://smithery.ai/servers/mechnotech/steledger)
+[![Steledger MCP connector – tool definition quality and endpoint health on Glama](https://glama.ai/mcp/connectors/com.steledger/gateway/badges/score.svg)](https://glama.ai/mcp/connectors/com.steledger/gateway)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 # Steledger — identity & memory for AI agents (`steledger-gateway`)
