@@ -64,9 +64,12 @@ steledger.com {
 	encode gzip
 	root * /srv/steledger
 
+	# A bare `header` would also apply to /assets and overwrite the line above,
+	# so the page rule excludes them explicitly.
 	@assets path /assets/*
+	@pages not path /assets/*
 	header @assets Cache-Control "public, max-age=86400"
-	header Cache-Control "public, max-age=300"
+	header @pages Cache-Control "public, max-age=300"
 
 	handle_errors {
 		rewrite * /404.html
@@ -82,9 +85,12 @@ http://steledger.com {
 	encode gzip
 	root * /srv/steledger
 
+	# A bare `header` would also apply to /assets and overwrite the line above,
+	# so the page rule excludes them explicitly.
 	@assets path /assets/*
+	@pages not path /assets/*
 	header @assets Cache-Control "public, max-age=86400"
-	header Cache-Control "public, max-age=300"
+	header @pages Cache-Control "public, max-age=300"
 
 	handle_errors {
 		rewrite * /404.html
