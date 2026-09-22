@@ -1,0 +1,7 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Steledger">
+  <style>
+    path { fill: #3f6e5e; }
+    @media (prefers-color-scheme: dark) { path { fill: #6fae98; } }
+  </style>
+  <path fill-rule="evenodd" d="M14 58 L14 24 Q14 6 32 6 Q50 6 50 24 L50 58 Z M20 33 h24 v4 h-24 Z M20 45 h24 v4 h-24 Z"/>
+</svg>

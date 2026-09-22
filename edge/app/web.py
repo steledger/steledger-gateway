@@ -17,7 +17,8 @@ def _shell(inner: str, *, err: bool = False) -> str:
         '<meta name="robots" content="noindex">'
         "<title>Steledger</title>"
         '<link rel="stylesheet" href="/style.css"></head><body>'
-        f'<div class="{cls}"><div class="brand"><b>&#9679;</b> emer<span>coin</span></div>'
+        f'<div class="{cls}"><div class="brand">'
+        f'<img src="/logo.svg" alt="" width="26" height="26"><span>Steledger</span></div>'
         f"{inner}</div></body></html>"
     )
 

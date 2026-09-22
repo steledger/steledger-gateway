@@ -19,14 +19,14 @@
     .bar .fill{height:100%;background:var(--purple)}
     .bar .v{width:40px;text-align:right;color:var(--purple-mid);font-size:12px}
     .recent{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--ink);max-height:200px;overflow:auto}
-    .recent div{padding:3px 0;border-bottom:1px solid #f0eaf8}
-    .muted{color:#b09cc9;font-size:12px}
+    .recent div{padding:3px 0;border-bottom:1px solid var(--line)}
+    .muted{color:var(--purple-mid);font-size:12px}
     a.back{margin-top:20px}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="brand"><b>&#9679;</b> stel<span>edger</span></div>
+    <div class="brand"><img src="/logo.svg" alt="" width="26" height="26"><span>Steledger</span></div>
     <h1>MCP usage</h1>
     <p class="sub" style="margin-bottom:0">Aggregate calls to the hosted MCP server at
       <code>/mcp</code>. No per-user identities — counts only. Read tools need no
