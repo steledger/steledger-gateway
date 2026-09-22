@@ -1,4 +1,4 @@
-"""Emercoin Agent Gateway — edge (agent-facing IAM).
+"""Steledger — edge (agent-facing IAM).
 
 The single authorization boundary for AI agents: GitHub-rooted login, session
 JWTs, challenge-response agent login, and per-tier rate limiting. It owns no node
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     await mcp_oauth.aclose()
 
 
-app = FastAPI(title="Emercoin Agent Gateway (edge)", version="0.0.1", lifespan=lifespan)
+app = FastAPI(title="Steledger (edge)", version="0.0.1", lifespan=lifespan)
 
 
 class _StripMcpSlash:

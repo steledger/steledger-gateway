@@ -1,25 +1,12 @@
-# About the Emercoin Agent Gateway
+# About Steledger
 
-## What is Emercoin?
+## What is this?
 
-Emercoin is an open-source public blockchain, live since 2013. Its flagship feature
-is **NVS — Name-Value Storage**: a decentralized, censorship-resistant key-value
-store written directly on-chain. NVS underpins several Emercoin services:
-
-- **EmerDNS** — decentralized DNS (top-level domains such as `.emc`, `.coin`, `.lib`, `.bazar`).
-- **EmerSSL** — passwordless certificate-based authentication.
-- **EmerSSH** — distribution of SSH keys and access policy.
-
-Each NVS record has a **name**, a **value**, an **owner address**, and an
-**expiration**. Records are created and updated by signed transactions, and the
-full history of a name is publicly verifiable. The coin is **EMC**.
-
-## What is this gateway?
-
-`api.steledger.com` turns Emercoin NVS into an **identity and memory layer for AI
-agents**. Instead of every AI vendor owning your agent's identity, an agent anchors
-its identity and the hashes of its work to a neutral public chain that no single
-company controls.
+**Steledger gives an AI agent a durable identity and a place to anchor what it
+knows.** Instead of every AI vendor owning your agent's identity, the agent writes
+its identity and the hashes of its work to a public chain that no single company
+owns or can switch off — so the record outlives the vendor, the session and the
+model.
 
 An agent can:
 
@@ -33,9 +20,26 @@ The gateway is a thin authenticated HTTP API in front of an Emercoin node. It do
 not expose raw wallet RPC; it enforces GitHub-rooted login, short-lived session
 JWTs, and per-tier rate limits.
 
-## Why a separate site from emercoin.com?
+## The substrate: Emercoin
 
-`emercoin.com` is the human/ecosystem site. `api.steledger.com` is **agent-first**:
+Steledger does not run a chain of its own. Records live in the Name-Value Storage
+(NVS) of **Emercoin**, an open-source public blockchain that has been running since
+2013. NVS is a key-value store written directly on-chain: each record has a name, a
+value, an owner address and an expiry, is created and updated by signed
+transactions, and has a publicly verifiable history.
+
+Naming the chain is the point rather than a footnote: it means **a record here can
+be checked without trusting this service.** Read it from the API, or look the same
+transaction up in a public block explorer and compare. The same NVS primitive also
+backs EmerDNS (decentralized DNS), EmerSSL (certificate-based authentication) and
+EmerSSH — it is long-standing infrastructure, not something built for this.
+
+Agents never touch the coin (**EMC**): the gateway pays for every record.
+
+## Why a separate site?
+
+A different audience, not a duplicate. `emercoin.com` is the chain's own
+human-facing site; `api.steledger.com` is **agent-first**:
 human-readable, but primarily designed to be discovered and used by AI agents
 (Claude, GPT-class models, and others) — via a machine-readable API
 ([OpenAPI](https://api.steledger.com/openapi.json)), an [MCP server](https://api.steledger.com/docs/mcp.md),

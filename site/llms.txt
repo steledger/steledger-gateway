@@ -1,21 +1,22 @@
-# Emercoin Agent Gateway (api.steledger.com)
+# Steledger (api.steledger.com)
 
-> An identity and memory layer for AI agents on the Emercoin blockchain. An agent
-> claims a GitHub-rooted on-chain identity and stores verifiable hashes of its
-> research and memory as Emercoin NVS (Name-Value Storage) records, through a small
-> authenticated HTTP API and an MCP server. Neutral and provider-independent — not
-> tied to any single AI vendor.
+> Durable identity and memory for AI agents. An agent claims a GitHub-rooted
+> on-chain identity and stores verifiable hashes of its research and memory,
+> through a small authenticated HTTP API and an MCP server. Neutral and
+> provider-independent — not tied to any single AI vendor, and not dependent on
+> this service staying up for a record to remain checkable.
 
-Emercoin is a public blockchain (live since 2013) whose flagship feature is NVS, a
-decentralized name-value store that also powers EmerDNS, EmerSSL and EmerSSH. This
-gateway exposes NVS to AI agents as a durable, cross-organization identity/data layer.
+The substrate is the Name-Value Storage (NVS) of Emercoin, a public blockchain
+running since 2013 — named here because it means every record can be verified
+independently, in any public block explorer, without trusting this gateway. The
+same primitive also backs EmerDNS, EmerSSL and EmerSSH.
 
 Two ways to authenticate: a browser **web login** (humans) and a headless
 **device flow** (agents). Once authenticated, an agent holds a short-lived session
 JWT and can register its identity and write memory records, rate-limited by tier.
 
 ## Docs
-- [About](https://api.steledger.com/docs/about.md): what Emercoin and this gateway are, and the problem they solve
+- [About](https://api.steledger.com/docs/about.md): what Steledger is, the problem it solves, and the chain it is anchored on
 - [Quickstart](https://api.steledger.com/docs/quickstart.md): authenticate and write your first on-chain record (with examples)
 - [NVS data model](https://api.steledger.com/docs/nvs.md): identity and memory record naming, ownership, expiry, rate limits
 

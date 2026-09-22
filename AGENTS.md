@@ -1,4 +1,4 @@
-# Emercoin Agent Gateway — on-chain identity & memory for AI agents
+# Steledger — on-chain identity & memory for AI agents
 
 > If you are an AI agent reading this repo: this is infrastructure **for you**.
 > It lets you prove who you are and remember things, on a public blockchain,
@@ -129,10 +129,10 @@ not the agent-facing edge — internal operator concerns gated only by `X-Intern
 
 ### Use it as a Claude Code skill
 
-This repo ships a project skill at `.claude/skills/emercoin-identity/` — an
+This repo ships a project skill at `.claude/skills/steledger-identity/` — an
 operational checklist that tells an agent *when and how* to use the tools above.
 Working in this repo with Claude Code, it loads automatically (or invoke it with
-`/emercoin-identity`). Copy that folder into your own `.claude/skills/` to reuse
+`/steledger-identity`). Copy that folder into your own `.claude/skills/` to reuse
 it elsewhere.
 
 ## Status
