@@ -254,7 +254,8 @@ async def read_record(
     held for a limited term, so check `expired` (and `expires_in`, in blocks) before
     trusting a record: a lapsed name still reads back as 'confirmed' but can be
     re-registered by anyone. Read-only, no sign-in required; use `whoami` to find
-    your own github_id. Returns null fields for a name that does not exist."""
+    your own github_id. Returns null fields for a name that does not exist.
+    `name` is the full NVS name and is capped at 512 bytes by the chain."""
     await _record(ctx, "read_record", _principal_optional())
     return await _adapter.read(name)  # type: ignore[return-value]
 
@@ -325,8 +326,18 @@ async def register_identity(
     confirm you are signed in; anchor memories under this identity afterwards with
     `store_memory`. Writes one NVS transaction paid by the gateway (you need no EMC);
     the record reads back as `pending` at once and `confirmed` after the next block
-    (~10 min on average). Idempotent — calling again rebinds the address. Returns the
-    record name and the transaction id."""
+    (~10 min on average). Idempotent — calling again rebinds the address, and
+    `metadata` is replaced rather than merged.
+
+    Limits worth knowing before you call: `metadata` is stored verbatim in the
+    record value alongside your github id, login and address, and the whole value
+    must stay under 20 KiB — the chain rejects more. Every 128 bytes of name plus
+    value adds about 0.0001 EMC to the fee the gateway pays for you. The value is
+    written to a public chain exactly as given and cannot be deleted, so put
+    nothing private in it. `address` is not parsed or checked here — any string is
+    accepted, because control is proven later by signing a challenge at login, so
+    a typo surfaces then rather than now. Returns the record name and the
+    transaction id."""
     p = _principal()
     await _record(ctx, "register_identity", p)
     await _ratelimiter.check_and_incr(p.github_id, settings.free_tier_writes_per_min)
@@ -376,6 +387,13 @@ async def store_memory(
     FREE-tier per-minute write limit. Writes one NVS transaction paid by the gateway;
     reads back `pending` at once, `confirmed` after the next block (~10 min). Not
     idempotent — each distinct hash is a new record. Register your identity first.
+
+    Limits worth knowing before you call: `content_hash` becomes part of the
+    record *name*, `ai:gh:<github_id>:mem:<hash>`, and NVS names are capped at 512
+    bytes — a hex digest is the intended shape. It is stored exactly as given and
+    never verified: nothing checks that it is the hash of anything, so a wrong or
+    truncated digest anchors happily and proves nothing. `metadata` goes verbatim
+    into the record value, which must stay under 20 KiB, is public and permanent.
     Returns the record name and the transaction id."""
     p = _principal()
     await _record(ctx, "store_memory", p)
