@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.steledger/steledger",
+  "name": "com.steledger/gateway",
   "title": "Steledger",
   "description": "Durable identity and memory for AI agents, anchored on the Emercoin blockchain.",
   "version": "0.3.0",
