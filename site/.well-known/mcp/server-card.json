@@ -9,6 +9,11 @@
       "oauth2"
     ]
   },
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
   "tools": [
     {
       "name": "node_status",
