@@ -1,0 +1,16 @@
+TODO.md
+venv
+.dockerignore
+.gitignore
+.git
+.idea
+docker.png
+core-fs.dockerfile
+docker-compose.yaml
+docker-compose-fs.yaml
+Dockerfile
+include
+share
+lib
+misc
+emercoin.conf

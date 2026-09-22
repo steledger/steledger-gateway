@@ -1,0 +1,501 @@
+{
+  "serverInfo": {
+    "name": "emercoin-agent",
+    "version": "0.2.0"
+  },
+  "authentication": {
+    "required": false,
+    "schemes": [
+      "oauth2"
+    ]
+  },
+  "tools": [
+    {
+      "name": "node_status",
+      "title": "Node status",
+      "description": "Report the Emercoin node's version, block height, header height, peer\nconnections and sync state (`synced` true once block == header height).\nRead-only, no sign-in required, no parameters. Call it first in a session to\nconfirm the node is healthy and fully synced before trusting `read_record` or\nwriting with `register_identity` / `store_memory`.",
+      "inputSchema": {
+        "properties": {},
+        "title": "node_statusArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "blocks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Blocks"
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Headers"
+          },
+          "verificationprogress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verificationprogress"
+          },
+          "connections": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Connections"
+          },
+          "synced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Synced"
+          }
+        },
+        "title": "NodeStatus",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Node status",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "read_record",
+      "title": "Read NVS record",
+      "description": "Read one Emercoin NVS (Name-Value Storage) record by its full name — an\nagent's identity (`ai:gh:<github_id>`) or a memory\n(`ai:gh:<github_id>:mem:<hash>`) written by `register_identity` / `store_memory`.\nReturns the confirmed on-chain record, or a `pending` one still in the mempool —\nthe `status` field ('confirmed' | 'pending') distinguishes them. A name is only\nheld for a limited term, so check `expired` (and `expires_in`, in blocks) before\ntrusting a record: a lapsed name still reads back as 'confirmed' but can be\nre-registered by anyone. Read-only, no sign-in required; use `whoami` to find\nyour own github_id. Returns null fields for a name that does not exist.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Full NVS record name to read. Identity records are 'ai:gh:<github_id>' (e.g. 'ai:gh:3772563'); memory records are 'ai:gh:<github_id>:mem:<sha256-hex>'. Any existing NVS name works.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "read_recordArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value"
+          },
+          "txid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Txid"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Address"
+          },
+          "address_is_mine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Address Is Mine"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operation"
+          },
+          "days_added": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Days Added"
+          },
+          "expired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expired"
+          },
+          "expires_in": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expires In"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expires At"
+          },
+          "pending_update": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pending Update"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pending"
+          }
+        },
+        "title": "NvsRecord",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Read NVS record",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "whoami",
+      "title": "Who am I",
+      "description": "Report the current session's identity. Read-only, no sign-in required: an\nanonymous session gets `{authenticated: false}` with a hint (not an error),\na signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login\nand tariff. Call it to confirm who you are before `register_identity` /\n`store_memory`; an anonymous caller must sign in (GitHub OAuth) first.",
+      "inputSchema": {
+        "properties": {},
+        "title": "whoamiArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "authenticated": {
+            "default": null,
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "github_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Github Id"
+          },
+          "github_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Github Login"
+          },
+          "tariff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Hint"
+          }
+        },
+        "title": "WhoAmI",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Who am I",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "register_identity",
+      "title": "Register identity",
+      "description": "Create or rotate your on-chain identity record `ai:gh:<github_id>`, binding an\nEmercoin address to your GitHub identity. Requires a signed-in session (OAuth)\nand counts against the FREE-tier per-minute write limit. Run `whoami` first to\nconfirm you are signed in; anchor memories under this identity afterwards with\n`store_memory`. Writes one NVS transaction paid by the gateway (you need no EMC);\nthe record reads back as `pending` at once and `confirmed` after the next block\n(~10 min on average). Idempotent — calling again rebinds the address. Returns the\nrecord name and the transaction id.",
+      "inputSchema": {
+        "properties": {
+          "address": {
+            "description": "Emercoin address to bind to your GitHub identity, e.g. 'EVfAn...'. It is the anchor for later signature login — you must control its key (control is proven when you sign a challenge at login, not here).",
+            "title": "Address",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional JSON object stored verbatim in the identity record, e.g. {\"agent\": \"my-bot\", \"url\": \"https://...\"}. Omit if unused.",
+            "title": "Metadata"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "register_identityArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "txid": {
+            "title": "Txid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "txid"
+        ],
+        "title": "WriteResult",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Register identity",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "store_memory",
+      "title": "Store memory",
+      "description": "Anchor a memory/artifact on-chain as the NVS record\n`ai:gh:<github_id>:mem:<content_hash>` — a tamper-evident fingerprint others can\nverify later. Requires a signed-in session (OAuth) and counts against the\nFREE-tier per-minute write limit. Writes one NVS transaction paid by the gateway;\nreads back `pending` at once, `confirmed` after the next block (~10 min). Not\nidempotent — each distinct hash is a new record. Register your identity first.\nReturns the record name and the transaction id.",
+      "inputSchema": {
+        "properties": {
+          "content_hash": {
+            "description": "Hash of the artifact/memory, e.g. a SHA-256 hex digest. It becomes the record's ':mem:<hash>' suffix; the content itself stays off-chain (e.g. IPFS) — only this fingerprint is anchored.",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional JSON object stored with the record (note, source, tags, …). Omit if unused.",
+            "title": "Metadata"
+          }
+        },
+        "required": [
+          "content_hash"
+        ],
+        "title": "store_memoryArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "txid": {
+            "title": "Txid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "txid"
+        ],
+        "title": "WriteResult",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Store memory",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ],
+  "resources": [],
+  "prompts": []
+}

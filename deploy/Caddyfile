@@ -1,0 +1,95 @@
+# Front for the agent gateway behind Cloudflare (proxied), on two hostnames:
+# api.steledger.com is canonical, ai.emercoin.com is the legacy host kept for a
+# transition period. Same app on both; separate access logs so the traffic moving
+# from one to the other is visible.
+#  - Any file that exists under ../site (index, login, css, /docs/*.md, llms.txt,
+#    robots.txt, sitemap.xml, …) is served directly and is Cloudflare-cacheable;
+#    extensionless paths resolve via try_files (/login -> login.html).
+#  - Everything else (the API: /auth, /nvs, /me, /status, /docs, /openapi.json, …)
+#    is proxied to the edge.
+# The same logic is imported for http:// (CF "Flexible", origin :80) and :443
+# (tls internal; CF "Full", origin :443). Origin ports are firewalled to CF.
+# Access logging. One file per site, rolled by Caddy itself — `docker logs` is a
+# ring buffer, not a retention policy, and these files are the only usage numbers
+# we have (no JS analytics: agents do not run JS, and the project does not track).
+# The client IP is deliberately dropped: behind Cloudflare the real address rides
+# in Cf-Connecting-Ip, and keeping it would make these files personal data for no
+# gain — what is worth counting is which paths and which agents, not who.
+# Note: a Cloudflare cache HIT never reaches here, so anything cacheable is
+# undercounted. Bypass the cache for whatever must be counted exactly.
+(accesslog) {
+	log {
+		output file /var/log/caddy/{args[0]}.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers>Cf-Connecting-Ip delete
+				request>headers>X-Forwarded-For delete
+			}
+		}
+	}
+}
+
+(app) {
+	encode gzip
+	root * /srv/site
+	@static file {
+		try_files {path} {path}.html {path}/index.html
+	}
+	handle @static {
+		rewrite {http.matchers.file.relative}
+		file_server
+	}
+	handle {
+		reverse_proxy emer-edge:8000
+	}
+}
+
+# The canonical host. Note the edge advertises exactly one OAuth issuer
+# (EDGE_PUBLIC_URL), so only one of these two hostnames is a working MCP sign-in
+# target at a time — see MIGRATION.md phase 2.
+http://api.steledger.com {
+	import accesslog api
+	import app
+}
+
+api.steledger.com {
+	tls internal
+	import accesslog api
+	import app
+}
+
+# Legacy host. Reads and REST keep working here during the transition.
+http://ai.emercoin.com {
+	import accesslog ai
+	import app
+}
+
+ai.emercoin.com {
+	tls internal
+	import accesslog ai
+	import app
+}
+
+# swap.emercoin.com — the USDT→EMC cashier. Runs as its own stack (repo: emercoin/
+# swap) joined to this docker network; it serves its own static page, so we just
+# reverse-proxy everything to it. Origin stays firewalled to Cloudflare.
+(swap) {
+	encode gzip
+	reverse_proxy swap:8002
+}
+
+http://swap.emercoin.com {
+	import accesslog swap
+	import swap
+}
+
+swap.emercoin.com {
+	tls internal
+	import accesslog swap
+	import swap
+}
