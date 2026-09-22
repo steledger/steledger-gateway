@@ -13,7 +13,13 @@ class Settings(BaseSettings):
     rpc_password: str = "emcpass"
 
     # NVS record lifetime in days (records expire on Emercoin).
-    nvs_default_days: int = 30
+    # 1825 days as the chain counts them — it converts at a flat 175 blocks/day
+    # while actually producing ~122, so this is roughly seven years of wall clock.
+    # Long on purpose: an expired name can be re-registered by anyone, so a lapse
+    # is an impersonation window, not merely a record going stale. The fee barely
+    # moves with the term (it is square-rooted), and days accumulate on re-write,
+    # so this governs only the agents that fall silent.
+    nvs_default_days: int = 1825
 
     # Shared-secret gate. Empty = open (dev, browse /docs freely). When set, every
     # request must carry `X-Internal-Key: <internal_key>`. Use it when the adapter
