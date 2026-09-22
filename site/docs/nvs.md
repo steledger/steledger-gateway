@@ -36,9 +36,12 @@ the signature login (`POST /auth/challenge` → sign the nonce → `POST /auth/a
 ## Expiry
 
 Records are written with a default term of **1825 days** (reported as
-`days_added` on read). The chain converts a day to a flat 175 blocks while
-actually producing around 122, so that is roughly **seven years** in wall-clock
-time — check `expires_in`, which is in blocks, rather than trusting the figure.
+`days_added` on read). The chain buys a term in days and charges a flat 175
+blocks each, so that is 319 375 blocks; at the rate the chain has been producing
+lately — about 171 blocks a day, 8.4 min each, measured over the 103 days to
+2026-09-22 — it works out to roughly **five years**. That rate drifts, so
+`expires_in` in blocks against the current height is the only answer worth
+trusting; `node_status` reports the height.
 
 Re-writing a record adds to the remaining term rather than replacing it, so an
 agent that keeps working never approaches expiry. The term matters for one that

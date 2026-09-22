@@ -167,7 +167,7 @@ mcp = FastMCP(
         "sign-in via OAuth, which your MCP client performs; on the FREE tier writes "
         "are rate-limited per minute. Typical flow: whoami → register_identity(address) "
         "→ store_memory(hash) → read_record(name). A write reads back as `pending` and "
-        "becomes `confirmed` after the next block (~10 min). The substrate is Emercoin, "
+        "becomes `confirmed` after the next block (about 8 minutes on average lately). The substrate is Emercoin, "
         "running since 2013 — named so that any record here can also be checked "
         "independently in a public block explorer, without trusting this service."
     ),
@@ -227,9 +227,12 @@ async def node_status(ctx: Context) -> NodeStatus:
     work, they simply confirm later.
 
     Also the way to make sense of expiry: `expires_in` on a record is denominated
-    in blocks, and this tool reports the current height. The chain charges a term
-    day as a flat 175 blocks while actually producing roughly 122 a day, so a term
-    lasts about 1.4 times its nominal length in wall-clock time."""
+    in blocks, and this tool reports the current height, so the two together are
+    the only authoritative answer to when something lapses. A term is bought in
+    days and charged at a flat 175 blocks each; the chain has been producing about
+    171 a day lately (8.4 min/block over the 103 days to 2026-09-22), so a term is
+    close to its nominal length right now — but that rate drifts, which is why you
+    should read the blocks rather than convert to days."""
     await _record(ctx, "node_status", _principal_optional())
     return await _adapter.status()  # type: ignore[return-value]
 
@@ -262,7 +265,8 @@ async def read_record(
     held for a limited term, so check `expired` (and `expires_in`, in blocks) before
     trusting a record: a lapsed name still reads back as 'confirmed' but can be
     re-registered by anyone. Read-only, no sign-in required; use `whoami` to find
-    your own github_id. Returns null fields for a name that does not exist.
+    your own github_id. A name that has never been written is an error, not an
+    empty record — handle the failure, do not test the fields for null.
     `name` is the full NVS name and is capped at 512 bytes by the chain."""
     await _record(ctx, "read_record", _principal_optional())
     return await _adapter.read(name)  # type: ignore[return-value]
@@ -344,7 +348,7 @@ async def register_identity(
     confirm you are signed in; anchor memories under this identity afterwards with
     `store_memory`. Writes one NVS transaction paid by the gateway (you need no EMC);
     the record reads back as `pending` at once and `confirmed` after the next block
-    (~10 min on average). Idempotent — calling again rebinds the address, and
+    (about 8 minutes on average lately). Idempotent — calling again rebinds the address, and
     `metadata` is replaced rather than merged.
 
     Limits worth knowing before you call: `metadata` is stored verbatim in the
@@ -403,8 +407,10 @@ async def store_memory(
     `ai:gh:<github_id>:mem:<content_hash>` — a tamper-evident fingerprint others can
     verify later. Requires a signed-in session (OAuth) and counts against the
     FREE-tier per-minute write limit. Writes one NVS transaction paid by the gateway;
-    reads back `pending` at once, `confirmed` after the next block (~10 min). Not
-    idempotent — each distinct hash is a new record. Register your identity first.
+    reads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not
+    idempotent — each distinct hash is a new record. Register your identity first
+    — nothing enforces it, the write succeeds either way, but a memory under an
+    unregistered id anchors to nobody and proves correspondingly little.
 
     Limits worth knowing before you call: `content_hash` becomes part of the
     record *name*, `ai:gh:<github_id>:mem:<hash>`, and NVS names are capped at 512
