@@ -6,6 +6,7 @@ and authorization live above the adapter, in the edge service.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -72,6 +73,24 @@ async def show_history(rpc: EmercoinRPC, name: str) -> Any:
 async def names_for_address(rpc: EmercoinRPC, address: str) -> Any:
     """All names owned by an address (name_scan_address)."""
     return await rpc.call("name_scan_address", address)
+
+
+# name_filter walks the node's whole name index on every call (about 0.65 s on the
+# production node, whatever it matches), so at most two scans run at once; the
+# rest queue here instead of tying up the node's RPC threads.
+_FILTER_SLOTS = asyncio.Semaphore(2)
+
+
+async def filter_names(rpc: EmercoinRPC, regex: str) -> list[dict[str, Any]]:
+    """Every name matching `regex` (name_filter), values in full.
+
+    Positional arguments are spelled out because the defaults are not ours to
+    rely on: maxage 0 (all blocks), from 0, nb 0 (no cap), no stats, plain-string
+    values, max-value-length 0 (do not truncate). Expired names are included and
+    carry `expired: true`; live ones omit the field.
+    """
+    async with _FILTER_SLOTS:
+        return await rpc.call("name_filter", regex, 0, 0, 0, "", "", 0)
 
 
 async def find_in_mempool(rpc: EmercoinRPC, name: str) -> dict[str, Any] | None:
