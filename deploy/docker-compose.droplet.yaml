@@ -83,6 +83,9 @@ services:
       EDGE_DEV_LOGIN_ENABLED: "false"
       EDGE_WEB_LOGIN_ENABLED: ${EDGE_WEB_LOGIN_ENABLED:-false}
       EDGE_GITHUB_REDIRECT_URI: ${EDGE_GITHUB_REDIRECT_URI:-}
+      # Service-wide write ceiling per 24 h; the real value lives in .env. Same
+      # fallback as the code default, since "" would fail to parse as an int.
+      EDGE_GLOBAL_WRITES_PER_DAY: ${EDGE_GLOBAL_WRITES_PER_DAY:-1000}
     depends_on: [redis, adapter]
 
   caddy:
