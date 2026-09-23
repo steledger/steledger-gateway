@@ -70,6 +70,9 @@ steledger.com {
 	@pages not path /assets/*
 	header @assets Cache-Control "public, max-age=86400"
 	header @pages Cache-Control "public, max-age=300"
+	# Caddy's MIME table maps .xml to text/xml; feed readers accept that, but
+	# the feed's own type is Atom. file_server keeps a Content-Type already set.
+	header /feed.xml Content-Type "application/atom+xml; charset=utf-8"
 
 	handle_errors {
 		rewrite * /404.html
@@ -91,6 +94,9 @@ http://steledger.com {
 	@pages not path /assets/*
 	header @assets Cache-Control "public, max-age=86400"
 	header @pages Cache-Control "public, max-age=300"
+	# Caddy's MIME table maps .xml to text/xml; feed readers accept that, but
+	# the feed's own type is Atom. file_server keeps a Content-Type already set.
+	header /feed.xml Content-Type "application/atom+xml; charset=utf-8"
 
 	handle_errors {
 		rewrite * /404.html
