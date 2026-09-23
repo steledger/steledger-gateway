@@ -176,11 +176,13 @@ class BatchWriteResponse(BaseModel):
     txid: object
     count: int
     names: list[str]
+    quota: dict | None = None
 
 
 class WriteResponse(BaseModel):
     name: str
     result: object
+    quota: dict | None = None
 
 
 # --- health / status -------------------------------------------------------
@@ -423,9 +425,18 @@ async def agent_login(
     )
 
 
-@app.get("/me", response_model=Principal)
-async def me(principal: Principal = Depends(current_principal)) -> Principal:
-    return principal
+@app.get("/me")
+async def me(
+    principal: Principal = Depends(current_principal), rl: RateLimiter = Depends(get_ratelimiter)
+) -> dict:
+    """The session's identity, and the writes it has left (same figures as `quota`
+    on every write). The account's creation time is internal and not echoed."""
+    return {
+        "github_id": principal.github_id,
+        "github_login": principal.github_login,
+        "tariff": principal.tariff,
+        "quota": await rl.remaining(principal),
+    }
 
 
 # --- NVS -------------------------------------------------------------------
@@ -437,7 +448,7 @@ async def create_identity(
     adapter: AdapterClient = Depends(get_adapter),
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> WriteResponse:
-    await rl.admit_write(principal)
+    quota = await rl.admit_write(principal)
     name = names.root_name(principal.github_id)
     value = {
         "github_id": principal.github_id,
@@ -446,7 +457,7 @@ async def create_identity(
         "metadata": req.metadata,
     }
     res = await adapter.write(name, value, settings.nvs_default_days)
-    return WriteResponse(name=res["name"], result=res["result"])
+    return WriteResponse(name=res["name"], result=res["result"], quota=quota)
 
 
 @app.post("/nvs/mem", response_model=WriteResponse)
@@ -456,15 +467,15 @@ async def create_mem(
     adapter: AdapterClient = Depends(get_adapter),
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> WriteResponse:
-    await rl.admit_write(principal)
-    name = names.mem_name(principal.github_id, req.content_hash)
+    name = names.mem_name(principal.github_id, req.content_hash)  # validates before spending quota
+    quota = await rl.admit_write(principal)
     value = {
         "github_id": principal.github_id,
         "content_hash": req.content_hash,
         "metadata": req.metadata,
     }
     res = await adapter.write(name, value, settings.nvs_default_days)
-    return WriteResponse(name=res["name"], result=res["result"])
+    return WriteResponse(name=res["name"], result=res["result"], quota=quota)
 
 
 @app.post("/nvs/mem/batch", response_model=BatchWriteResponse)
@@ -475,10 +486,11 @@ async def create_mem_batch(
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> BatchWriteResponse:
     """Atomically store many memory records in one transaction (name_updatemany)."""
-    await rl.admit_write(principal, len(req.records))
+    mem_names = [names.mem_name(principal.github_id, r.content_hash) for r in req.records]
+    quota = await rl.admit_write(principal, len(req.records))
     ops = [
         {
-            "name": names.mem_name(principal.github_id, r.content_hash),
+            "name": name,
             "value": {
                 "github_id": principal.github_id,
                 "content_hash": r.content_hash,
@@ -486,10 +498,10 @@ async def create_mem_batch(
             },
             "days": settings.nvs_default_days,
         }
-        for r in req.records
+        for name, r in zip(mem_names, req.records)
     ]
     res = await adapter.write_batch(ops)
-    return BatchWriteResponse(txid=res["txid"], count=res["count"], names=res["names"])
+    return BatchWriteResponse(txid=res["txid"], count=res["count"], names=res["names"], quota=quota)
 
 
 @app.get("/records/{github_id}")

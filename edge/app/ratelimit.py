@@ -37,6 +37,8 @@ DAY = 86400
 # Drops expired timestamps from every bucket, and only if the `n` new writes fit
 # in all of them inserts them everywhere. Returns 0 when admitted, otherwise the
 # 1-based index of the first window that refused (nothing is inserted then).
+# On success it returns {0, count in window 1, count in window 2}, so the caller
+# can say how much is left without a second round trip.
 _SLIDING_WINDOWS = """
 local now = tonumber(ARGV[1])
 local n = tonumber(ARGV[2])
@@ -46,7 +48,7 @@ for i, key in ipairs(KEYS) do
   local limit = tonumber(ARGV[3 + 2 * i])
   redis.call('ZREMRANGEBYSCORE', key, '-inf', now - window)
   if redis.call('ZCARD', key) + n > limit then
-    return i
+    return {i}
   end
 end
 for i, key in ipairs(KEYS) do
@@ -56,7 +58,7 @@ for i, key in ipairs(KEYS) do
   end
   redis.call('PEXPIRE', key, math.ceil(window * 1000))
 end
-return 0
+return {0, redis.call('ZCARD', KEYS[1]), redis.call('ZCARD', KEYS[2])}
 """
 
 
@@ -64,17 +66,25 @@ def _utc_date(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
+def _quota(used_minute: int, used_day: int) -> dict:
+    return {
+        "writes_left_this_minute": max(0, settings.free_tier_writes_per_min - used_minute),
+        "writes_left_today": max(0, settings.free_tier_writes_per_day - used_day),
+    }
+
+
 class RateLimiter:
     def __init__(self, url: str) -> None:
         self._redis = redis.from_url(url, decode_responses=True)
         self._script = self._redis.register_script(_SLIDING_WINDOWS)
 
-    async def admit_write(self, principal: Principal, n: int = 1) -> None:
+    async def admit_write(self, principal: Principal, n: int = 1) -> dict:
         """Admit `n` chain writes for `principal` (n>1 for a batch), or raise.
 
         403 for an account too new to write, 429 for a per-account limit, 503
         when the service-wide daily ceiling is reached. The detail says which,
-        and when writing will work again."""
+        and when writing will work again. On success, returns what is left:
+        {"writes_left_this_minute": .., "writes_left_today": ..}."""
         now = time.time()
         self._check_account_age(principal, now)
 
@@ -87,7 +97,8 @@ class RateLimiter:
         args: list = [now, n, secrets.token_hex(8)]
         for _, window, limit in windows:
             args += [window, limit]
-        refused = int(await self._script(keys=[k for k, _, _ in windows], args=args))
+        result = await self._script(keys=[k for k, _, _ in windows], args=args)
+        refused = int(result[0])
 
         if refused == 1:
             raise AgentError(
@@ -115,6 +126,20 @@ class RateLimiter:
                 "Retry later; writes resume as the last 24 hours' writes age out. Reads still work.",
                 retry_after=3600,
             )
+        return _quota(int(result[1]), int(result[2]))
+
+    async def remaining(self, principal: Principal) -> dict:
+        """What `admit_write` would leave, without writing anything. Stale entries
+        are skipped by score rather than removed — this path never modifies state."""
+        now = time.time()
+        gid = principal.github_id
+        minute = await self._redis.zcount(f"rl:nvs:{gid}", now - MINUTE, "+inf")
+        day = await self._redis.zcount(f"rl:nvs:day:{gid}", now - DAY, "+inf")
+        quota = _quota(minute, day)
+        created = principal.github_created
+        if created is not None and now < created + settings.min_account_age_days * DAY:
+            quota["writes_open_on"] = _utc_date(created + settings.min_account_age_days * DAY)
+        return quota
 
     @staticmethod
     def _check_account_age(principal: Principal, now: float) -> None:

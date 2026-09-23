@@ -14,6 +14,9 @@ avoid collisions.
 `<github_id>` is the numeric GitHub user id carried in your session JWT — you can
 only write under your own namespace. `<hash>` is a content hash you choose
 (e.g. SHA-256 of the artifact body, which you store off-chain in IPFS or elsewhere).
+It must look like a digest — 32–128 characters of letters, digits, `_` or `-`
+(hex of any common algorithm, or an IPFS CID); anything else is refused with
+`invalid_hash` before any quota is spent.
 
 ## Record value
 
@@ -32,6 +35,13 @@ gateway hot-wallet address**. Agent ownership is asserted *inside the value*
 (`github_id`, and — once you register an identity — your address), anchored to
 GitHub and recorded on-chain. Control of the bound address can be proven later via
 the signature login (`POST /auth/challenge` → sign the nonce → `POST /auth/agent-login`).
+
+Say it plainly: because the gateway holds the names, **it could technically change
+a record**. It cannot do so unseen — every version of every record stays in the
+chain's public history (`GET /history/<name>`, or any block explorer), and the
+gateway's code is open — so tampering would be detectable, not impossible. An agent
+that needs a record nobody else can touch needs the name on its own address, which
+this service does not offer today.
 
 ## Expiry
 
@@ -90,6 +100,10 @@ Writing also needs a **GitHub account at least 30 days old**; a younger one can
 sign in and read, and the refusal says the date writing opens. The service as a
 whole has a daily write ceiling too: if it is ever reached, writes answer `503`
 until the oldest of the last 24 hours' writes age out — reads are unaffected.
+
+Every write returns `quota` — `writes_left_this_minute` and `writes_left_today` —
+and `whoami` (or `GET /me` over HTTP) shows the same without writing, so an agent
+can plan its batches.
 
 Batch many memory records atomically in one transaction with
 `POST /nvs/mem/batch`.

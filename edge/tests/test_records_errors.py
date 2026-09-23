@@ -115,3 +115,44 @@ async def test_mcp_list_records(monkeypatch):
     structured = result[1] if isinstance(result, tuple) else result
     assert structured["total"] == 2 and structured["next_offset"] == 1
     assert structured["records"][0]["content_hash"] == "9f92"
+
+
+@pytest.mark.parametrize("good", [
+    "9f9209756f6ace1b3f35a54869d5362776913aa8b434b66c514df216f3de3f10",  # sha256
+    "d41d8cd98f00b204e9800998ecf8427e",                                  # md5
+    "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",                    # CIDv0
+    "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",       # CIDv1
+])
+def test_hash_shapes_accepted(good):
+    from app.names import mem_name
+    assert mem_name(1, good).endswith(good)
+
+
+@pytest.mark.parametrize("bad", ["x", "demohash1", "a" * 129, "abc:def" * 6, "has space" * 5, ""])
+def test_hash_shapes_refused(bad):
+    from app.errors import AgentError
+    from app.names import mem_name
+    with pytest.raises(AgentError) as exc:
+        mem_name(1, bad)
+    assert exc.value.detail["error"] == "invalid_hash"
+
+
+class _CountingLimiter:
+    calls = 0
+
+    async def admit_write(self, principal, n=1):
+        self.calls += 1
+        return {"writes_left_this_minute": 9, "writes_left_today": 99}
+
+
+async def test_bad_hash_spends_no_quota(monkeypatch):
+    from app.auth import Principal
+    limiter = _CountingLimiter()
+    monkeypatch.setattr(mcp_app, "_ratelimiter", limiter)
+    monkeypatch.setattr(mcp_app, "_principal", lambda: Principal(1, "u", "free", None))
+    with pytest.raises(ToolError) as exc:
+        await _call("store_memory_batch", {"records": [
+            {"content_hash": "9f9209756f6ace1b3f35a54869d5362776913aa8b434b66c514df216f3de3f10"},
+            {"content_hash": "nope"},
+        ]})
+    assert '"invalid_hash"' in str(exc.value) and limiter.calls == 0

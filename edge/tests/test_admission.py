@@ -129,3 +129,17 @@ def test_parse_created():
     assert parse_created("2011-01-25T18:44:36Z") == 1295981076
     assert parse_created(None) is None
     assert parse_created("garbage") is None
+
+
+@needs_redis
+async def test_admission_reports_what_is_left(rl):
+    quota = await rl.admit_write(who(1), 2)
+    assert quota == {"writes_left_this_minute": 1, "writes_left_today": 3}
+    assert await rl.remaining(who(1)) == quota  # the read-only view agrees
+    assert await rl.remaining(who(2)) == {"writes_left_this_minute": 3, "writes_left_today": 5}
+
+
+@needs_redis
+async def test_remaining_names_the_day_a_young_account_can_write(rl):
+    quota = await rl.remaining(who(1, created=int(time.time()) - DAY))
+    assert quota["writes_open_on"]

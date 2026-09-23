@@ -480,13 +480,41 @@
     {
       "name": "whoami",
       "title": "Who am I",
-      "description": "Report the current session's identity. Read-only, no sign-in required: an\nanonymous session gets `{authenticated: false}` with a hint (not an error),\na signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login\nand tariff. Call it to confirm who you are before `register_identity` /\n`store_memory`; an anonymous caller must sign in (GitHub OAuth) first.\n\n`github_id` is the one field you usually need: every record name is built\nfrom it — `ai:gh:<github_id>` and `ai:gh:<github_id>:mem:<hash>` — so this is\nhow you learn which names are yours to write and to read back.\n\n`tariff` is `free` for every account today; it governs the write limits,\ncurrently 10 writes per minute and 100 per trailing 24 hours per account, and\nwriting needs a GitHub account at least 30 days old. Note what this tool does\nnot do: it reports the session only, reading the token your client already\nholds without calling GitHub, and it proves nothing about control of an\nEmercoin address — that is what signing a challenge at login is for.",
+      "description": "Report the current session's identity. Read-only, no sign-in required: an\nanonymous session gets `{authenticated: false}` with a hint (not an error),\na signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login\nand tariff. Call it to confirm who you are before `register_identity` /\n`store_memory`; an anonymous caller must sign in (GitHub OAuth) first.\n\n`github_id` is the one field you usually need: every record name is built\nfrom it — `ai:gh:<github_id>` and `ai:gh:<github_id>:mem:<hash>` — so this is\nhow you learn which names are yours to write and to read back.\n\n`tariff` is `free` for every account today; it governs the write limits,\ncurrently 10 writes per minute and 100 per trailing 24 hours per account, and\nwriting needs a GitHub account at least 30 days old. `quota` says how many\nwrites are left right now (and, for a young account, the date writes open);\nevery write returns the same figures, so plan batches with them. Note what this tool does\nnot do: it reports the session only, reading the token your client already\nholds without calling GitHub, and it proves nothing about control of an\nEmercoin address — that is what signing a challenge at login is for.",
       "inputSchema": {
         "properties": {},
         "title": "whoamiArguments",
         "type": "object"
       },
       "outputSchema": {
+        "$defs": {
+          "Quota": {
+            "description": "Writes this account has left on its tier. `writes_open_on` (a UTC date)\nappears only while the GitHub account is too new to write.",
+            "properties": {
+              "writes_left_this_minute": {
+                "title": "Writes Left This Minute",
+                "type": "integer"
+              },
+              "writes_left_today": {
+                "title": "Writes Left Today",
+                "type": "integer"
+              },
+              "writes_open_on": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Writes Open On"
+              }
+            },
+            "title": "Quota",
+            "type": "object"
+          }
+        },
         "properties": {
           "authenticated": {
             "default": null,
@@ -528,6 +556,17 @@
             ],
             "default": null,
             "title": "Tariff"
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Quota"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "hint": {
             "anyOf": [
@@ -585,6 +624,34 @@
         "type": "object"
       },
       "outputSchema": {
+        "$defs": {
+          "Quota": {
+            "description": "Writes this account has left on its tier. `writes_open_on` (a UTC date)\nappears only while the GitHub account is too new to write.",
+            "properties": {
+              "writes_left_this_minute": {
+                "title": "Writes Left This Minute",
+                "type": "integer"
+              },
+              "writes_left_today": {
+                "title": "Writes Left Today",
+                "type": "integer"
+              },
+              "writes_open_on": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Writes Open On"
+              }
+            },
+            "title": "Quota",
+            "type": "object"
+          }
+        },
         "properties": {
           "name": {
             "title": "Name",
@@ -593,11 +660,15 @@
           "txid": {
             "title": "Txid",
             "type": "string"
+          },
+          "quota": {
+            "$ref": "#/$defs/Quota"
           }
         },
         "required": [
           "name",
-          "txid"
+          "txid",
+          "quota"
         ],
         "title": "WriteResult",
         "type": "object"
@@ -613,7 +684,7 @@
     {
       "name": "store_memory",
       "title": "Store memory",
-      "description": "Anchor a fingerprint of a memory or artifact on-chain as the NVS record\n`ai:gh:<github_id>:mem:<content_hash>`. Only the hash and your metadata are\nstored — never the content, which you keep wherever you like (a file, a\ndatabase, IPFS). What you get is a tamper-evident, timestamped proof that\ncontent with this hash existed, which anyone can verify later; `list_records`\nfinds your earlier ones again. Requires a signed-in session (OAuth) and counts against the\nFREE-tier write limits (see `whoami`). Writes one NVS transaction paid by the gateway;\nreads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not\nidempotent — each distinct hash is a new record. Register your identity first\n— nothing enforces it, the write succeeds either way, but a memory under an\nunregistered id anchors to nobody and proves correspondingly little.\n\nLimits worth knowing before you call: `content_hash` becomes part of the\nrecord *name*, `ai:gh:<github_id>:mem:<hash>`, and NVS names are capped at 512\nbytes — a hex digest is the intended shape. It is stored exactly as given and\nnever verified: nothing checks that it is the hash of anything, so a wrong or\ntruncated digest anchors happily and proves nothing. `metadata` goes verbatim\ninto the record value, which must stay under 20 KiB, is public and permanent.\nReturns the record name and the transaction id.",
+      "description": "Anchor a fingerprint of a memory or artifact on-chain as the NVS record\n`ai:gh:<github_id>:mem:<content_hash>`. Only the hash and your metadata are\nstored — never the content, which you keep wherever you like (a file, a\ndatabase, IPFS). What you get is a tamper-evident, timestamped proof that\ncontent with this hash existed, which anyone can verify later; `list_records`\nfinds your earlier ones again. Requires a signed-in session (OAuth) and counts against the\nFREE-tier write limits (see `whoami`). Writes one NVS transaction paid by the gateway;\nreads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not\nidempotent — each distinct hash is a new record. Register your identity first\n— nothing enforces it, the write succeeds either way, but a memory under an\nunregistered id anchors to nobody and proves correspondingly little.\n\nWriting a hash you already anchored renews that record: its term is extended\n(terms add up), and its metadata is replaced by what you pass now — so pass\nthe old metadata again if you want to keep it. That is the only renewal there\nis; a record left alone lapses after its term (see `expires_in`).\n\nLimits worth knowing before you call: `content_hash` becomes part of the\nrecord *name*, `ai:gh:<github_id>:mem:<hash>`, so it must look like a digest:\n32–128 characters of letters, digits, '_' or '-' (hex of any common algorithm,\nor an IPFS CID); anything else is refused with `invalid_hash` before any quota\nis spent. Beyond that shape it is never verified: nothing checks that it is\nthe hash of anything, so a wrong digest anchors happily and proves nothing. `metadata` goes verbatim\ninto the record value, which must stay under 20 KiB, is public and permanent.\nReturns the record name and the transaction id.",
       "inputSchema": {
         "properties": {
           "content_hash": {
@@ -643,6 +714,34 @@
         "type": "object"
       },
       "outputSchema": {
+        "$defs": {
+          "Quota": {
+            "description": "Writes this account has left on its tier. `writes_open_on` (a UTC date)\nappears only while the GitHub account is too new to write.",
+            "properties": {
+              "writes_left_this_minute": {
+                "title": "Writes Left This Minute",
+                "type": "integer"
+              },
+              "writes_left_today": {
+                "title": "Writes Left Today",
+                "type": "integer"
+              },
+              "writes_open_on": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Writes Open On"
+              }
+            },
+            "title": "Quota",
+            "type": "object"
+          }
+        },
         "properties": {
           "name": {
             "title": "Name",
@@ -651,17 +750,134 @@
           "txid": {
             "title": "Txid",
             "type": "string"
+          },
+          "quota": {
+            "$ref": "#/$defs/Quota"
           }
         },
         "required": [
           "name",
-          "txid"
+          "txid",
+          "quota"
         ],
         "title": "WriteResult",
         "type": "object"
       },
       "annotations": {
         "title": "Store memory",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "store_memory_batch",
+      "title": "Store memories (batch)",
+      "description": "Anchor many fingerprints in ONE on-chain transaction — the way to record a\nsession's worth of artifacts without spending a write per minute on each.\nEach item becomes `ai:gh:<github_id>:mem:<content_hash>`, exactly as with\n`store_memory`: only hashes and metadata, never content. All or nothing: if\nany item is refused (a malformed hash, say), nothing is written.\n\nRequires a signed-in session. A batch of N counts as N writes against the\nFREE-tier limits (10 per minute, 100 per 24 hours), so at most 10 items fit\nin one call on a fresh minute; the result says how many writes are left.\nOne transaction id comes back for the whole batch; each name reads back\n`pending` at once and `confirmed` after the next block.",
+      "inputSchema": {
+        "$defs": {
+          "MemoryItem": {
+            "properties": {
+              "content_hash": {
+                "title": "Content Hash",
+                "type": "string"
+              },
+              "metadata": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Metadata"
+              }
+            },
+            "title": "MemoryItem",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "records": {
+            "description": "1–100 items, each {\"content_hash\": \"<digest>\", \"metadata\": {...}}; metadata is optional. Same rules as store_memory for each item.",
+            "items": {
+              "$ref": "#/$defs/MemoryItem"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "store_memory_batchArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "$defs": {
+          "Quota": {
+            "description": "Writes this account has left on its tier. `writes_open_on` (a UTC date)\nappears only while the GitHub account is too new to write.",
+            "properties": {
+              "writes_left_this_minute": {
+                "title": "Writes Left This Minute",
+                "type": "integer"
+              },
+              "writes_left_today": {
+                "title": "Writes Left Today",
+                "type": "integer"
+              },
+              "writes_open_on": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Writes Open On"
+              }
+            },
+            "title": "Quota",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "txid": {
+            "title": "Txid",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
+          "quota": {
+            "$ref": "#/$defs/Quota"
+          }
+        },
+        "required": [
+          "txid",
+          "count",
+          "names",
+          "quota"
+        ],
+        "title": "BatchWriteResult",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Store memories (batch)",
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false,

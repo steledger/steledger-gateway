@@ -8,7 +8,16 @@ memory records are named, so agents can't collide or overwrite each other:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
+
+from .errors import AgentError
+
+# What a content hash may look like: 32–128 characters of [A-Za-z0-9_-]. That
+# admits a hex digest of any common algorithm (MD5 to SHA-512) and IPFS CIDs, and
+# keeps out what does harm: short or empty strings that fingerprint nothing, and
+# ':' or spaces, which would let a "hash" fake the structure of the name itself.
+HASH = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
 
 def root_name(github_id: int) -> str:
@@ -16,6 +25,13 @@ def root_name(github_id: int) -> str:
 
 
 def mem_name(github_id: int, content_hash: str) -> str:
+    if not HASH.match(content_hash):
+        raise AgentError(
+            400, "invalid_hash",
+            f"{content_hash[:80]!r} does not look like a content hash.",
+            "Pass the digest itself — e.g. the 64 hex characters of `sha256sum` — or an "
+            "IPFS CID: 32–128 characters of letters, digits, '_' or '-'.",
+        )
     return f"ai:gh:{github_id}:mem:{content_hash}"
 
 
