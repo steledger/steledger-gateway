@@ -254,8 +254,8 @@ async def login(req: LoginRequest) -> TokenResponse:
     (use the device flow); gated behind EDGE_DEV_LOGIN_ENABLED."""
     if not settings.dev_login_enabled:
         raise HTTPException(status_code=404, detail="raw-token login disabled; use /auth/github/device")
-    github_id, github_login = await resolve_github_token(req.github_token)
-    token = issue_jwt(github_id, github_login)
+    github_id, github_login, created = await resolve_github_token(req.github_token)
+    token = issue_jwt(github_id, github_login, github_created=created)
     return TokenResponse(
         access_token=token, github_id=github_id, github_login=github_login, tariff="free"
     )
@@ -316,8 +316,8 @@ async def github_device_poll(
     if not access_token:
         raise HTTPException(status_code=502, detail="github returned no access token")
     await oauth.drop_device(req.session_id)
-    github_id, github_login = await github.fetch_user(access_token)
-    token = issue_jwt(github_id, github_login)
+    github_id, github_login, created = await github.fetch_user(access_token)
+    token = issue_jwt(github_id, github_login, github_created=created)
     return JSONResponse(
         status_code=200,
         content=TokenResponse(
@@ -370,8 +370,8 @@ async def github_web_callback(
             web.error_page(f"Code exchange failed: {result.get('error', 'unknown')}"),
             status_code=401,
         )
-    github_id, github_login = await github.fetch_user(access_token)
-    token = issue_jwt(github_id, github_login)
+    github_id, github_login, created = await github.fetch_user(access_token)
+    token = issue_jwt(github_id, github_login, github_created=created)
     return HTMLResponse(
         web.result_page(github_login, token, settings.jwt_ttl_seconds, "free")
     )
@@ -430,7 +430,7 @@ async def create_identity(
     adapter: AdapterClient = Depends(get_adapter),
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> WriteResponse:
-    await rl.check_and_incr(principal.github_id, settings.free_tier_writes_per_min)
+    await rl.admit_write(principal)
     name = names.root_name(principal.github_id)
     value = {
         "github_id": principal.github_id,
@@ -449,7 +449,7 @@ async def create_mem(
     adapter: AdapterClient = Depends(get_adapter),
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> WriteResponse:
-    await rl.check_and_incr(principal.github_id, settings.free_tier_writes_per_min)
+    await rl.admit_write(principal)
     name = names.mem_name(principal.github_id, req.content_hash)
     value = {
         "github_id": principal.github_id,
@@ -468,7 +468,7 @@ async def create_mem_batch(
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> BatchWriteResponse:
     """Atomically store many memory records in one transaction (name_updatemany)."""
-    await rl.check_and_incr(principal.github_id, settings.free_tier_writes_per_min, len(req.records))
+    await rl.admit_write(principal, len(req.records))
     ops = [
         {
             "name": names.mem_name(principal.github_id, r.content_hash),

@@ -164,7 +164,8 @@ async def store_memory_batch(records: list[dict]) -> dict:
     atomic vs. calling store_memory repeatedly).
 
     Each record is {"content_hash": str, "metadata"?: dict}. Returns one txid for
-    the whole batch. Counts as len(records) against the per-minute write tier.
+    the whole batch. Counts as len(records) against the free-tier write limits
+    (10 per minute, 100 per trailing 24 hours per account).
     """
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(

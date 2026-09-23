@@ -33,8 +33,17 @@ class Settings(BaseSettings):
     dev_login_enabled: bool = False
     web_login_enabled: bool = False
 
-    # Free tier rate limit (sliding 60s window in Redis, keyed by github_id).
+    # Free tier write limits, all sliding windows in Redis (see ratelimit.py).
+    # Per account: a burst limit per minute and a cap per trailing 24 hours.
     free_tier_writes_per_min: int = 10
+    free_tier_writes_per_day: int = 100
+    # Across all accounts per trailing 24 hours: the ceiling on what the gateway
+    # wallet can be made to spend in a day. Production sets its own value in
+    # deploy/.env; this default only has to be safe, not right.
+    global_writes_per_day: int = 1000
+    # A GitHub account must be this old before it can write. Fresh accounts are
+    # free to mint in bulk, and every write spends the gateway's EMC.
+    min_account_age_days: int = 30
     redis_url: str = "redis://redis:6379/0"
 
     # NVS record lifetime in days (records expire on Emercoin).

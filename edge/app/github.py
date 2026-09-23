@@ -9,6 +9,7 @@ permissions, which is all the identity we need.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -18,6 +19,16 @@ ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
 AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 USER_API = "https://api.github.com/user"
 DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
+
+
+def parse_created(value: str | None) -> int | None:
+    """GitHub's `created_at` ("2011-01-25T18:44:36Z") as Unix seconds, or None."""
+    if not value:
+        return None
+    try:
+        return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return None
 
 
 class GitHubOAuth:
@@ -78,15 +89,16 @@ class GitHubOAuth:
         )
         return f"{AUTHORIZE_URL}?{query}"
 
-    async def fetch_user(self, access_token: str) -> tuple[int, str]:
-        """Resolve an access token to (github_id, login)."""
+    async def fetch_user(self, access_token: str) -> tuple[int, str, int | None]:
+        """Resolve an access token to (github_id, login, account created_at as
+        Unix seconds). All three are public profile fields: no scope needed."""
         resp = await self._client.get(
             USER_API,
             headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
         )
         resp.raise_for_status()
         data = resp.json()
-        return int(data["id"]), data["login"]
+        return int(data["id"]), data["login"], parse_created(data.get("created_at"))
 
     async def aclose(self) -> None:
         await self._client.aclose()
