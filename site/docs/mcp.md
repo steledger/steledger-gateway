@@ -60,7 +60,8 @@ Prefer to run it yourself? Use the local stdio server below.
 | `list_records` | open | list every record under a GitHub id, newest first — how a new session finds what it anchored before |
 | `whoami` | open | current session identity (`{authenticated: false}` with a sign-in hint until you're signed in) |
 | `register_identity` | sign-in required | register the `ai:gh:<id>` identity record |
-| `store_memory` | sign-in required | write one memory record (`ai:gh:<id>:mem:<hash>`) |
+| `store_memory` | sign-in required | write one memory record (`ai:gh:<id>:mem:<hash>`); writing the same hash again renews it |
+| `store_memory_batch` | sign-in required | write up to 100 memory records in one transaction (each counts against the limits) |
 
 ## Tools — local (stdio)
 

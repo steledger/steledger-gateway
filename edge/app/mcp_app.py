@@ -150,6 +150,14 @@ class NvsRecord(TypedDict, total=False):
     pending: dict | None
 
 
+class Quota(TypedDict, total=False):
+    """Writes this account has left on its tier. `writes_open_on` (a UTC date)
+    appears only while the GitHub account is too new to write."""
+    writes_left_this_minute: int
+    writes_left_today: int
+    writes_open_on: str | None
+
+
 class WhoAmI(TypedDict, total=False):
     """The current session's identity. `authenticated` is always present; the
     GitHub-rooted fields are filled only when signed in, and `hint` only when not
@@ -158,6 +166,7 @@ class WhoAmI(TypedDict, total=False):
     github_id: int | None
     github_login: str | None
     tariff: str | None
+    quota: Quota | None
     hint: str | None
 
 
@@ -185,9 +194,25 @@ class RecordList(TypedDict):
 
 
 class WriteResult(TypedDict):
-    """The on-chain write: the NVS name written and its transaction id."""
+    """The on-chain write: the NVS name written, its transaction id, and the
+    writes this account has left afterwards."""
     name: str
     txid: str
+    quota: Quota
+
+
+class BatchWriteResult(TypedDict):
+    """One transaction for the whole batch: its id, every name written, and the
+    writes this account has left afterwards."""
+    txid: str
+    count: int
+    names: list[str]
+    quota: Quota
+
+
+class MemoryItem(TypedDict, total=False):
+    content_hash: str
+    metadata: dict | None
 
 
 mcp = FastMCP(
@@ -196,7 +221,7 @@ mcp = FastMCP(
         "Give an AI agent a durable identity and a place to anchor what it knows, "
         "as records on a public blockchain that no single vendor owns or can switch "
         "off. Read tools (node_status, read_record, list_records, whoami) are open to everyone — no "
-        "sign-in. Write tools (register_identity, store_memory) require a GitHub "
+        "sign-in. Write tools (register_identity, store_memory, store_memory_batch) require a GitHub "
         "sign-in via OAuth, which your MCP client performs, from a GitHub account at "
         "least 30 days old; on the FREE tier writes are limited per minute and per "
         "day. Typical flow: whoami → register_identity(address) "
@@ -388,7 +413,9 @@ async def whoami(ctx: Context) -> WhoAmI:
 
     `tariff` is `free` for every account today; it governs the write limits,
     currently 10 writes per minute and 100 per trailing 24 hours per account, and
-    writing needs a GitHub account at least 30 days old. Note what this tool does
+    writing needs a GitHub account at least 30 days old. `quota` says how many
+    writes are left right now (and, for a young account, the date writes open);
+    every write returns the same figures, so plan batches with them. Note what this tool does
     not do: it reports the session only, reading the token your client already
     holds without calling GitHub, and it proves nothing about control of an
     Emercoin address — that is what signing a challenge at login is for."""
@@ -407,6 +434,7 @@ async def whoami(ctx: Context) -> WhoAmI:
         "github_id": p.github_id,
         "github_login": p.github_login,
         "tariff": p.tariff,
+        "quota": await _ratelimiter.remaining(p),  # type: ignore[union-attr]
     }
 
 
@@ -459,7 +487,7 @@ async def register_identity(
     transaction id."""
     p = _principal()
     await _record(ctx, "register_identity", p)
-    await _ratelimiter.admit_write(p)
+    quota = await _ratelimiter.admit_write(p)
     name = names.root_name(p.github_id)
     value = {
         "github_id": p.github_id,
@@ -468,7 +496,7 @@ async def register_identity(
         "metadata": metadata or {},
     }
     res = await _adapter.write(name, value, settings.nvs_default_days)
-    return {"name": res["name"], "txid": res["result"]}
+    return {"name": res["name"], "txid": res["result"], "quota": quota}
 
 
 @_tool(
@@ -512,20 +540,75 @@ async def store_memory(
     — nothing enforces it, the write succeeds either way, but a memory under an
     unregistered id anchors to nobody and proves correspondingly little.
 
+    Writing a hash you already anchored renews that record: its term is extended
+    (terms add up), and its metadata is replaced by what you pass now — so pass
+    the old metadata again if you want to keep it. That is the only renewal there
+    is; a record left alone lapses after its term (see `expires_in`).
+
     Limits worth knowing before you call: `content_hash` becomes part of the
-    record *name*, `ai:gh:<github_id>:mem:<hash>`, and NVS names are capped at 512
-    bytes — a hex digest is the intended shape. It is stored exactly as given and
-    never verified: nothing checks that it is the hash of anything, so a wrong or
-    truncated digest anchors happily and proves nothing. `metadata` goes verbatim
+    record *name*, `ai:gh:<github_id>:mem:<hash>`, so it must look like a digest:
+    32–128 characters of letters, digits, '_' or '-' (hex of any common algorithm,
+    or an IPFS CID); anything else is refused with `invalid_hash` before any quota
+    is spent. Beyond that shape it is never verified: nothing checks that it is
+    the hash of anything, so a wrong digest anchors happily and proves nothing. `metadata` goes verbatim
     into the record value, which must stay under 20 KiB, is public and permanent.
     Returns the record name and the transaction id."""
     p = _principal()
     await _record(ctx, "store_memory", p)
-    await _ratelimiter.admit_write(p)
-    name = names.mem_name(p.github_id, content_hash)
+    name = names.mem_name(p.github_id, content_hash)  # validates before spending quota
+    quota = await _ratelimiter.admit_write(p)
     value = {"github_id": p.github_id, "content_hash": content_hash, "metadata": metadata or {}}
     res = await _adapter.write(name, value, settings.nvs_default_days)
-    return {"name": res["name"], "txid": res["result"]}
+    return {"name": res["name"], "txid": res["result"], "quota": quota}
+
+
+@_tool(
+    title="Store memories (batch)",
+    annotations=ToolAnnotations(
+        title="Store memories (batch)",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    ),
+    structured_output=True,
+)
+async def store_memory_batch(
+    ctx: Context,
+    records: Annotated[
+        list[MemoryItem],
+        Field(min_length=1, max_length=100, description=(
+            "1–100 items, each {\"content_hash\": \"<digest>\", \"metadata\": {...}}; "
+            "metadata is optional. Same rules as store_memory for each item."
+        )),
+    ],
+) -> BatchWriteResult:
+    """Anchor many fingerprints in ONE on-chain transaction — the way to record a
+    session's worth of artifacts without spending a write per minute on each.
+    Each item becomes `ai:gh:<github_id>:mem:<content_hash>`, exactly as with
+    `store_memory`: only hashes and metadata, never content. All or nothing: if
+    any item is refused (a malformed hash, say), nothing is written.
+
+    Requires a signed-in session. A batch of N counts as N writes against the
+    FREE-tier limits (10 per minute, 100 per 24 hours), so at most 10 items fit
+    in one call on a fresh minute; the result says how many writes are left.
+    One transaction id comes back for the whole batch; each name reads back
+    `pending` at once and `confirmed` after the next block."""
+    p = _principal()
+    await _record(ctx, "store_memory_batch", p)
+    items = [(names.mem_name(p.github_id, r["content_hash"]), r) for r in records]
+    quota = await _ratelimiter.admit_write(p, len(items))  # type: ignore[union-attr]
+    ops = [
+        {
+            "name": name,
+            "value": {"github_id": p.github_id, "content_hash": r["content_hash"],
+                      "metadata": r.get("metadata") or {}},
+            "days": settings.nvs_default_days,
+        }
+        for name, r in items
+    ]
+    res = await _adapter.write_batch(ops)  # type: ignore[union-attr]
+    return {"txid": res["txid"], "count": res["count"], "names": res["names"], "quota": quota}
 
 
 def streamable_app() -> Starlette:
