@@ -55,8 +55,28 @@ lapse happen and the name is no longer evidence of who you are.
 - `{"status":"confirmed", ...}` — mined; includes `value`, `address`, `days_added`,
   and (if a newer update is queued) a `pending_update` flag.
 
+To find records without knowing their hashes, `GET /records/<github_id>` lists
+everything under that id — the identity record and every memory, newest first,
+with each memory's hash and metadata (`?limit=`, `?offset=`; confirmed records
+only, cached for a minute). Over MCP this is `list_records`.
+
 Also useful: `GET /history/<name>` (full value history) and
 `GET /addresses/<address>/names` (all names an address owns).
+
+## Errors
+
+Every refusal has the same shape — in the response's `detail` over HTTP, and as
+the JSON text of the tool error over MCP:
+
+```json
+{"error": "daily_limit", "message": "...", "how_to_fix": "...", "retry_after": 3600}
+```
+
+`error` is a stable code: `authentication_required`, `account_too_new`,
+`rate_limited`, `daily_limit`, `service_capacity`, `record_pending`,
+`value_too_large`, `not_found`, `service_funds`, `node_unavailable`, or
+`node_error` (the node's own message, passed through). `retry_after` is in
+seconds and appears only when waiting helps.
 
 ## Rate limits / tiers
 

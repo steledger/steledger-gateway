@@ -310,6 +310,174 @@
       }
     },
     {
+      "name": "list_records",
+      "title": "List records",
+      "description": "List every record under one GitHub id — its identity record `ai:gh:<id>` and\nall its memories `ai:gh:<id>:mem:<hash>` — newest first, with each memory's\ncontent hash and metadata. This is how an agent starting a fresh session\nfinds what it anchored before: `read_record` needs the full name, hash\nincluded, and this is where the hashes come from. Read-only, no sign-in\nneeded to list any id; omit `github_id` to list your own when signed in.\n\nWhat comes back is the chain's view: confirmed records only (a write still in\nthe mempool shows up after its block), expired ones included and flagged\n`expired` — their names can be taken by someone else, so do not treat them\nas yours. Only fingerprints and metadata live here; the content itself stays\nwherever you stored it. Results are cached for about a minute, so a record\nconfirmed seconds ago may take that long to appear.",
+      "inputSchema": {
+        "properties": {
+          "github_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Numeric GitHub id whose records to list. Omit it to list your own (needs a signed-in session; `whoami` shows the id).",
+            "title": "Github Id"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Records per page, 1–200.",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Where the page starts; use `next_offset` from the previous page.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "title": "list_recordsArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "$defs": {
+          "RecordEntry": {
+            "description": "One record under a GitHub id. `kind` is identity, memory or other;\n`content_hash` is set for memories, `address` for the identity record.",
+            "properties": {
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "kind": {
+                "title": "Kind",
+                "type": "string"
+              },
+              "content_hash": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Content Hash"
+              },
+              "address": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Address"
+              },
+              "metadata": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Metadata"
+              },
+              "registered_at": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Registered At"
+              },
+              "expires_in": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Expires In"
+              },
+              "expired": {
+                "title": "Expired",
+                "type": "boolean"
+              }
+            },
+            "title": "RecordEntry",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "github_id": {
+            "title": "Github Id",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/$defs/RecordEntry"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "github_id",
+          "total",
+          "offset",
+          "next_offset",
+          "records"
+        ],
+        "title": "RecordList",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "List records",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "whoami",
       "title": "Who am I",
       "description": "Report the current session's identity. Read-only, no sign-in required: an\nanonymous session gets `{authenticated: false}` with a hint (not an error),\na signed-in one gets `{authenticated: true}` plus the GitHub-rooted id, login\nand tariff. Call it to confirm who you are before `register_identity` /\n`store_memory`; an anonymous caller must sign in (GitHub OAuth) first.\n\n`github_id` is the one field you usually need: every record name is built\nfrom it — `ai:gh:<github_id>` and `ai:gh:<github_id>:mem:<hash>` — so this is\nhow you learn which names are yours to write and to read back.\n\n`tariff` is `free` for every account today; it governs the write limits,\ncurrently 10 writes per minute and 100 per trailing 24 hours per account, and\nwriting needs a GitHub account at least 30 days old. Note what this tool does\nnot do: it reports the session only, reading the token your client already\nholds without calling GitHub, and it proves nothing about control of an\nEmercoin address — that is what signing a challenge at login is for.",
@@ -445,7 +613,7 @@
     {
       "name": "store_memory",
       "title": "Store memory",
-      "description": "Anchor a memory/artifact on-chain as the NVS record\n`ai:gh:<github_id>:mem:<content_hash>` — a tamper-evident fingerprint others can\nverify later. Requires a signed-in session (OAuth) and counts against the\nFREE-tier write limits (see `whoami`). Writes one NVS transaction paid by the gateway;\nreads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not\nidempotent — each distinct hash is a new record. Register your identity first\n— nothing enforces it, the write succeeds either way, but a memory under an\nunregistered id anchors to nobody and proves correspondingly little.\n\nLimits worth knowing before you call: `content_hash` becomes part of the\nrecord *name*, `ai:gh:<github_id>:mem:<hash>`, and NVS names are capped at 512\nbytes — a hex digest is the intended shape. It is stored exactly as given and\nnever verified: nothing checks that it is the hash of anything, so a wrong or\ntruncated digest anchors happily and proves nothing. `metadata` goes verbatim\ninto the record value, which must stay under 20 KiB, is public and permanent.\nReturns the record name and the transaction id.",
+      "description": "Anchor a fingerprint of a memory or artifact on-chain as the NVS record\n`ai:gh:<github_id>:mem:<content_hash>`. Only the hash and your metadata are\nstored — never the content, which you keep wherever you like (a file, a\ndatabase, IPFS). What you get is a tamper-evident, timestamped proof that\ncontent with this hash existed, which anyone can verify later; `list_records`\nfinds your earlier ones again. Requires a signed-in session (OAuth) and counts against the\nFREE-tier write limits (see `whoami`). Writes one NVS transaction paid by the gateway;\nreads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not\nidempotent — each distinct hash is a new record. Register your identity first\n— nothing enforces it, the write succeeds either way, but a memory under an\nunregistered id anchors to nobody and proves correspondingly little.\n\nLimits worth knowing before you call: `content_hash` becomes part of the\nrecord *name*, `ai:gh:<github_id>:mem:<hash>`, and NVS names are capped at 512\nbytes — a hex digest is the intended shape. It is stored exactly as given and\nnever verified: nothing checks that it is the hash of anything, so a wrong or\ntruncated digest anchors happily and proves nothing. `metadata` goes verbatim\ninto the record value, which must stay under 20 KiB, is public and permanent.\nReturns the record name and the transaction id.",
       "inputSchema": {
         "properties": {
           "content_hash": {

@@ -26,6 +26,8 @@ from .config import settings
 from .github import GitHubOAuth
 from .oauth_state import OAuthStateStore
 from .ratelimit import RateLimiter
+from .errors import from_adapter
+from .records import RecordLister, page
 from .stats import Stats
 
 
@@ -45,9 +47,12 @@ async def lifespan(app: FastAPI):
     )
     app.state.oauth = OAuthStateStore(settings.redis_url)
     app.state.stats = Stats(settings.redis_url)
+    app.state.records = RecordLister(app.state.adapter, settings.redis_url)
     # Remote MCP (/mcp) reuses the same adapter + rate limiter + stats; its session
     # manager must run for the streamable-http transport to work.
-    mcp_configure(app.state.adapter, app.state.ratelimiter, app.state.stats, app.state.github)
+    mcp_configure(
+        app.state.adapter, app.state.ratelimiter, app.state.stats, app.state.github, app.state.records
+    )
     async with mcp_server.session_manager.run():
         yield
     await app.state.adapter.aclose()
@@ -56,6 +61,7 @@ async def lifespan(app: FastAPI):
     await app.state.github.aclose()
     await app.state.oauth.aclose()
     await app.state.stats.aclose()
+    await app.state.records.aclose()
     await mcp_oauth.aclose()
 
 
@@ -86,7 +92,8 @@ app.add_middleware(_StripMcpSlash)
 
 @app.exception_handler(AdapterError)
 async def _adapter_error(request: Request, exc: AdapterError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    err = from_adapter(exc)
+    return JSONResponse(status_code=err.status_code, content={"detail": err.detail}, headers=err.headers)
 
 
 def get_adapter(request: Request) -> AdapterClient:
@@ -483,6 +490,14 @@ async def create_mem_batch(
     ]
     res = await adapter.write_batch(ops)
     return BatchWriteResponse(txid=res["txid"], count=res["count"], names=res["names"])
+
+
+@app.get("/records/{github_id}")
+async def list_records(request: Request, github_id: int, limit: int = 50, offset: int = 0) -> dict:
+    """Every record under one GitHub id — `ai:gh:<id>` and `ai:gh:<id>:...` —
+    newest first. Open, like every read. Confirmed records only; a write still in
+    the mempool appears after its block. Cached for a minute."""
+    return page(await request.app.state.records.list(github_id), github_id, limit, offset)
 
 
 @app.get("/history/{name:path}")

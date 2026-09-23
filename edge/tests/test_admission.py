@@ -64,7 +64,7 @@ async def test_minute_limit_refuses_without_consuming_the_day(rl):
     for _ in range(3):
         await rl.admit_write(who(1))
     exc = await refused(rl.admit_write(who(1)))
-    assert exc.status_code == 429 and "per minute" in exc.detail
+    assert exc.status_code == 429 and exc.detail["error"] == "rate_limited"
     assert await zcard("rl:nvs:day:1") == 3
     assert await zcard("rl:nvs:day:all") == 3
 
@@ -74,7 +74,7 @@ async def test_daily_limit_per_account(rl, monkeypatch):
     monkeypatch.setattr(settings, "free_tier_writes_per_min", 100)
     await rl.admit_write(who(1), 5)
     exc = await refused(rl.admit_write(who(1)))
-    assert exc.status_code == 429 and "24 hours" in exc.detail
+    assert exc.status_code == 429 and exc.detail["error"] == "daily_limit"
     await rl.admit_write(who(2))  # another account is unaffected
 
 
@@ -93,7 +93,8 @@ async def test_global_ceiling_is_shared_and_refuses_with_503(rl, monkeypatch):
     await rl.admit_write(who(1), 5)
     await rl.admit_write(who(2), 3)  # 8 total: the ceiling
     exc = await refused(rl.admit_write(who(3)))
-    assert exc.status_code == 503 and exc.headers["Retry-After"]
+    assert exc.status_code == 503 and exc.detail["error"] == "service_capacity"
+    assert exc.headers["Retry-After"]
     # the refused write took nothing from the account's own windows
     assert await zcard("rl:nvs:3") == 0
     assert await zcard("rl:nvs:day:3") == 0
@@ -111,7 +112,8 @@ async def test_window_slides(rl, monkeypatch):
 async def test_account_age(rl):
     now = int(time.time())
     exc = await refused(rl.admit_write(who(1, created=now - 29 * DAY)))
-    assert exc.status_code == 403 and "too new" in exc.detail
+    assert exc.status_code == 403 and exc.detail["error"] == "account_too_new"
+    assert exc.detail["retry_after"] > 0
     assert await zcard("rl:nvs:day:all") == 0  # refused before any window
     await rl.admit_write(who(2, created=now - 31 * DAY))
     await rl.admit_write(who(3, created=None))  # signature-login token: no claim

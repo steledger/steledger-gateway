@@ -14,6 +14,7 @@ Run: `python server.py` (stdio transport — the agent's MCP client launches it)
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 
@@ -181,9 +182,33 @@ async def store_memory_batch(records: list[dict]) -> dict:
 async def read_record(name: str) -> dict:
     """Read any NVS record by name (e.g. ai:gh:12345 or ai:gh:12345:mem:<hash>)."""
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(f"{GATEWAY_URL}/nvs/{name}")
-        resp.raise_for_status()
-        return resp.json()
+        return _json(await client.get(f"{GATEWAY_URL}/nvs/{name}"))
+
+
+@mcp.tool()
+async def list_records(github_id: int | None = None, limit: int = 50, offset: int = 0) -> dict:
+    """List every record under a GitHub id — its identity record and all its
+    memories, newest first, with each memory's hash and metadata. This is how a
+    new session finds what it anchored before. Omit github_id to list your own
+    (needs login). Pass `next_offset` back as `offset` for the next page."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        if github_id is None:
+            github_id = _json(await client.get(f"{GATEWAY_URL}/me", headers=_auth_headers()))["github_id"]
+        return _json(await client.get(
+            f"{GATEWAY_URL}/records/{github_id}", params={"limit": limit, "offset": offset}
+        ))
+
+
+def _json(resp: httpx.Response) -> dict:
+    """The response body, or an error carrying the gateway's structured detail
+    ({error, message, how_to_fix, retry_after}) instead of a bare status line."""
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail")
+        except ValueError:
+            detail = resp.text
+        raise RuntimeError(json.dumps(detail) if isinstance(detail, dict) else f"{resp.status_code}: {detail}")
+    return resp.json()
 
 
 if __name__ == "__main__":
