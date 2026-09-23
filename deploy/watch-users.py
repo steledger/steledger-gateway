@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tell the operator when someone other than them starts using the gateway.
 
-Run hourly by steledger-watch-users.timer on the droplet. Two signals:
+Run hourly by steledger-watch-users.timer on the droplet. Three signals:
 
   - writers: GitHub ids that own `ai:gh:<id>...` records, read straight from the
     chain (`name_filter` on the node), so it does not depend on our own logs.
@@ -10,13 +10,18 @@ Run hourly by steledger-watch-users.timer on the droplet. Two signals:
     `mcp:callers` set the edge keeps). Only the count is reported — the privacy
     page promises that set is a number, not a list — so a sign-in without a
     write stays anonymous here.
+  - X: replies to @steledger's posts and mentions elsewhere, as at most one
+    digest per run — up to five comments with links, then a count — so a burst
+    of replies is still a single message an hour. Read with the app's bearer
+    token, which never rotates; the posting token lives on a laptop and does.
 
 Your own ids (KNOWN_GITHUB_IDS) are left out of both. State lives in
 /var/lib/steledger-watch/state.json; a failed send leaves it untouched, so the
 next run tries again.
 
 Config, root-only, never in this repo: /etc/steledger/notify.env with
-TG_BOT_TOKEN, TG_CHAT_ID and KNOWN_GITHUB_IDS (comma-separated).
+TG_BOT_TOKEN, TG_CHAT_ID, KNOWN_GITHUB_IDS (comma-separated), and for X
+X_BEARER_TOKEN and X_USER_ID (leave them out to skip the X digest).
 
     python3 watch-users.py           # check and notify
     python3 watch-users.py --test    # send a test message and the current baseline
@@ -41,6 +46,8 @@ NODE = ["docker", "exec", "emc", "emercoin-cli",
         "-datadir=/srv/emercoind", "-conf=/srv/emercoind/emercoin.conf"]
 REDIS = ["docker", "exec", "emer-redis", "redis-cli", "--raw"]
 API = "https://api.steledger.com"
+X_API = "https://api.x.com/2"
+DIGEST_ITEMS = 5
 NAME = re.compile(r"^ai:gh:(\d+)(?::|$)")
 
 
@@ -82,6 +89,39 @@ def signed_in(known: set) -> int:
     return total - mine
 
 
+def x_mentions(conf: dict, since_id: str | None) -> list:
+    """Posts mentioning the account since `since_id`, newest first (at most 100)."""
+    params = {"max_results": 100, "tweet.fields": "in_reply_to_user_id,author_id,created_at"}
+    if since_id:
+        params["since_id"] = since_id
+    url = f"{X_API}/users/{conf['X_USER_ID']}/mentions?{urllib.parse.urlencode(params)}"
+    token = urllib.parse.unquote(conf["X_BEARER_TOKEN"])
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.load(resp).get("data", [])
+
+
+def x_digest(conf: dict, posts: list) -> str | None:
+    me = conf["X_USER_ID"]
+    posts = [p for p in posts if p.get("author_id") != me]
+    comments = [p for p in posts if p.get("in_reply_to_user_id") == me]
+    elsewhere = len(posts) - len(comments)
+    if not posts:
+        return None
+    lines = []
+    if comments:
+        lines.append(f"Steledger on X: {len(comments)} new comment(s) on our posts.")
+        for p in comments[:DIGEST_ITEMS]:
+            text = " ".join(p["text"].split())
+            lines.append(f"• {text[:140]}{'…' if len(text) > 140 else ''}\n  https://x.com/i/status/{p['id']}")
+        if len(comments) > DIGEST_ITEMS:
+            lines.append(f"…and {len(comments) - DIGEST_ITEMS} more.")
+    if elsewhere:
+        lines.append(f"{'Also m' if comments else 'Steledger on X: m'}entioned in {elsewhere} "
+                     f"other post(s): https://x.com/notifications/mentions")
+    return "\n".join(lines)
+
+
 def send(conf: dict, text: str) -> None:
     data = urllib.parse.urlencode({"chat_id": conf["TG_CHAT_ID"], "text": text,
                                    "disable_web_page_preview": "true"}).encode()
@@ -107,6 +147,8 @@ def main() -> None:
         STATE.parent.mkdir(parents=True, exist_ok=True)
         STATE.write_text(json.dumps({"writers": sorted(now_writers), "signed_in": now_signed_in}))
         return
+    # "x" is absent until the X digest has run once; then {"since_id": newest seen or None}.
+    new_state = {"writers": sorted(now_writers), "signed_in": now_signed_in, "x": state.get("x")}
 
     messages = []
     for gid in sorted(set(now_writers) - set(state["writers"])):
@@ -122,9 +164,22 @@ def main() -> None:
             f"{now_signed_in} outside accounts so far. No identity shown: sign-ins are counted, not listed."
         )
 
+    if conf.get("X_BEARER_TOKEN") and conf.get("X_USER_ID"):
+        seen = state.get("x")
+        try:
+            posts = x_mentions(conf, seen["since_id"] if seen else None)
+        except (OSError, ValueError) as exc:  # X down or refusing: the rest still runs
+            print(f"X mentions unavailable: {exc}", file=sys.stderr)
+        else:
+            newest = posts[0]["id"] if posts else (seen or {}).get("since_id")
+            new_state["x"] = {"since_id": newest}
+            # First X run: record where we are and say nothing, like the baseline above.
+            if seen is not None and (digest := x_digest(conf, posts)):
+                messages.append(digest)
+
     for text in messages:
         send(conf, text)  # raises before the state is saved, so a failure is retried
-    STATE.write_text(json.dumps({"writers": sorted(now_writers), "signed_in": now_signed_in}))
+    STATE.write_text(json.dumps(new_state))
 
 
 if __name__ == "__main__":
