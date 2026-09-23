@@ -217,6 +217,16 @@ async def address_names(address: str, rpc: EmercoinRPC = Depends(get_rpc)) -> di
         raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
 
 
+@app.get("/names/filter")
+async def filter_names(regex: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
+    """Names matching a regular expression (name_filter). Policy-free: the edge
+    decides which expressions it ever sends. Slow by nature — see nvs.filter_names."""
+    try:
+        return {"names": await nvs.filter_names(rpc, regex)}
+    except RPCError as exc:
+        raise HTTPException(status_code=502, detail=f"name_filter failed: {exc.message}")
+
+
 @app.get("/nvs/{name:path}")
 async def read(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
     """Read an NVS record. A confirmed value comes from the name DB; a name written
