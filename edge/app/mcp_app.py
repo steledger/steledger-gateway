@@ -64,7 +64,9 @@ def _principal_optional() -> Principal | None:
     if at is None:
         return None
     claims = at.claims or {}
-    return Principal(int(at.subject), claims.get("login", ""), claims.get("tariff", "free"))
+    return Principal(
+        int(at.subject), claims.get("login", ""), claims.get("tariff", "free"), claims.get("ghc")
+    )
 
 
 # Actionable, machine-readable payload returned (as the tool error text) when a
@@ -164,8 +166,9 @@ mcp = FastMCP(
         "as records on a public blockchain that no single vendor owns or can switch "
         "off. Read tools (node_status, read_record, whoami) are open to everyone — no "
         "sign-in. Write tools (register_identity, store_memory) require a GitHub "
-        "sign-in via OAuth, which your MCP client performs; on the FREE tier writes "
-        "are rate-limited per minute. Typical flow: whoami → register_identity(address) "
+        "sign-in via OAuth, which your MCP client performs, from a GitHub account at "
+        "least 30 days old; on the FREE tier writes are limited per minute and per "
+        "day. Typical flow: whoami → register_identity(address) "
         "→ store_memory(hash) → read_record(name). A write reads back as `pending` and "
         "becomes `confirmed` after the next block (about 8 minutes on average lately). The substrate is Emercoin, "
         "running since 2013 — named so that any record here can also be checked "
@@ -290,11 +293,12 @@ async def whoami(ctx: Context) -> WhoAmI:
     from it — `ai:gh:<github_id>` and `ai:gh:<github_id>:mem:<hash>` — so this is
     how you learn which names are yours to write and to read back.
 
-    `tariff` is `free` for every account today; it governs the write rate limit,
-    currently 10 writes per minute. Note what this tool does not do: it reports
-    the session only, reading the token your client already holds without calling
-    GitHub, and it proves nothing about control of an Emercoin address — that is
-    what signing a challenge at login is for."""
+    `tariff` is `free` for every account today; it governs the write limits,
+    currently 10 writes per minute and 100 per trailing 24 hours per account, and
+    writing needs a GitHub account at least 30 days old. Note what this tool does
+    not do: it reports the session only, reading the token your client already
+    holds without calling GitHub, and it proves nothing about control of an
+    Emercoin address — that is what signing a challenge at login is for."""
     p = _principal_optional()
     await _record(ctx, "whoami", p)
     if p is None:
@@ -344,7 +348,7 @@ async def register_identity(
 ) -> WriteResult:
     """Create or rotate your on-chain identity record `ai:gh:<github_id>`, binding an
     Emercoin address to your GitHub identity. Requires a signed-in session (OAuth)
-    and counts against the FREE-tier per-minute write limit. Run `whoami` first to
+    and counts against the FREE-tier write limits (see `whoami`). Run `whoami` first to
     confirm you are signed in; anchor memories under this identity afterwards with
     `store_memory`. Writes one NVS transaction paid by the gateway (you need no EMC);
     the record reads back as `pending` at once and `confirmed` after the next block
@@ -362,7 +366,7 @@ async def register_identity(
     transaction id."""
     p = _principal()
     await _record(ctx, "register_identity", p)
-    await _ratelimiter.check_and_incr(p.github_id, settings.free_tier_writes_per_min)
+    await _ratelimiter.admit_write(p)
     name = names.root_name(p.github_id)
     value = {
         "github_id": p.github_id,
@@ -406,7 +410,7 @@ async def store_memory(
     """Anchor a memory/artifact on-chain as the NVS record
     `ai:gh:<github_id>:mem:<content_hash>` — a tamper-evident fingerprint others can
     verify later. Requires a signed-in session (OAuth) and counts against the
-    FREE-tier per-minute write limit. Writes one NVS transaction paid by the gateway;
+    FREE-tier write limits (see `whoami`). Writes one NVS transaction paid by the gateway;
     reads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not
     idempotent — each distinct hash is a new record. Register your identity first
     — nothing enforces it, the write succeeds either way, but a memory under an
@@ -421,7 +425,7 @@ async def store_memory(
     Returns the record name and the transaction id."""
     p = _principal()
     await _record(ctx, "store_memory", p)
-    await _ratelimiter.check_and_incr(p.github_id, settings.free_tier_writes_per_min)
+    await _ratelimiter.admit_write(p)
     name = names.mem_name(p.github_id, content_hash)
     value = {"github_id": p.github_id, "content_hash": content_hash, "metadata": metadata or {}}
     res = await _adapter.write(name, value, settings.nvs_default_days)

@@ -18,6 +18,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import settings
+from .github import parse_created
 
 GITHUB_USER_API = "https://api.github.com/user"
 
@@ -27,10 +28,16 @@ class Principal:
     github_id: int
     github_login: str
     tariff: str
+    # When the GitHub account was created (Unix seconds), from the `ghc` claim.
+    # None for tokens that did not come through GitHub — signature login, or
+    # tokens issued before the claim existed — and those skip the age check:
+    # signature login needs an on-chain identity, which needed a write, which
+    # needed the account to be old enough already.
+    github_created: int | None = None
 
 
-async def resolve_github_token(token: str) -> tuple[int, str]:
-    """Verify a GitHub token and return (id, login). Raises 401 if invalid."""
+async def resolve_github_token(token: str) -> tuple[int, str, int | None]:
+    """Verify a GitHub token and return (id, login, created). Raises 401 if invalid."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
             GITHUB_USER_API,
@@ -39,10 +46,12 @@ async def resolve_github_token(token: str) -> tuple[int, str]:
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="invalid GitHub token")
     data = resp.json()
-    return int(data["id"]), data["login"]
+    return int(data["id"]), data["login"], parse_created(data.get("created_at"))
 
 
-def issue_jwt(github_id: int, github_login: str, tariff: str = "free") -> str:
+def issue_jwt(
+    github_id: int, github_login: str, tariff: str = "free", github_created: int | None = None
+) -> str:
     now = int(time.time())
     payload = {
         "sub": str(github_id),
@@ -51,6 +60,8 @@ def issue_jwt(github_id: int, github_login: str, tariff: str = "free") -> str:
         "iat": now,
         "exp": now + settings.jwt_ttl_seconds,
     }
+    if github_created is not None:
+        payload["ghc"] = github_created
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
@@ -63,10 +74,15 @@ def decode_token(token: str) -> Principal | None:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError:
         return None
+    return _principal_from(payload)
+
+
+def _principal_from(payload: dict) -> Principal:
     return Principal(
         github_id=int(payload["sub"]),
         github_login=payload["login"],
         tariff=payload.get("tariff", "free"),
+        github_created=payload.get("ghc"),
     )
 
 
@@ -78,8 +94,4 @@ def current_principal(creds: HTTPAuthorizationCredentials = Depends(_bearer)) ->
         payload = jwt.decode(creds.credentials, settings.jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail=f"invalid token: {exc}")
-    return Principal(
-        github_id=int(payload["sub"]),
-        github_login=payload["login"],
-        tariff=payload.get("tariff", "free"),
-    )
+    return _principal_from(payload)

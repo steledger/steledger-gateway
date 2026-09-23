@@ -104,7 +104,7 @@ class GitHubOAuthProvider(
         access = token.get("access_token")
         if not access:
             raise ValueError(f"github code exchange failed: {token.get('error', 'unknown')}")
-        gh_id, gh_login = await self._github.fetch_user(access)
+        gh_id, gh_login, gh_created = await self._github.fetch_user(access)
         new_code = f"mcp_{secrets.token_hex(16)}"
         ac = AuthorizationCode(
             code=new_code,
@@ -119,7 +119,7 @@ class GitHubOAuthProvider(
         )
         await self._redis.set(
             f"oauth:code:{new_code}",
-            json.dumps({"ac": ac.model_dump(mode="json"), "login": gh_login}),
+            json.dumps({"ac": ac.model_dump(mode="json"), "login": gh_login, "created": gh_created}),
             ex=_CODE_TTL,
         )
         return construct_redirect_uri(data["redirect_uri"], code=new_code, state=state)
@@ -133,12 +133,19 @@ class GitHubOAuthProvider(
         return AuthorizationCode.model_validate(json.loads(raw)["ac"])
 
     # --- token issuance: access token = our session JWT ------------------
-    async def _issue(self, gh_id: int, gh_login: str, scopes: list[str], client_id: str) -> OAuthToken:
-        access = issue_jwt(gh_id, gh_login)
+    async def _issue(
+        self, gh_id: int, gh_login: str, scopes: list[str], client_id: str, gh_created: int | None
+    ) -> OAuthToken:
+        access = issue_jwt(gh_id, gh_login, github_created=gh_created)
         refresh = f"rt_{secrets.token_hex(32)}"
+        # The account's creation time rides along, or a refresh would mint a token
+        # without it and the age check on writes would be skipped from then on.
         await self._redis.set(
             f"oauth:rt:{refresh}",
-            json.dumps({"github_id": gh_id, "login": gh_login, "client_id": client_id, "scopes": scopes}),
+            json.dumps({
+                "github_id": gh_id, "login": gh_login, "created": gh_created,
+                "client_id": client_id, "scopes": scopes,
+            }),
             ex=_REFRESH_TTL,
         )
         return OAuthToken(
@@ -157,7 +164,10 @@ class GitHubOAuthProvider(
             raise ValueError("invalid authorization code")
         stored = json.loads(raw)
         gh_id = int(authorization_code.subject)
-        return await self._issue(gh_id, stored.get("login", ""), authorization_code.scopes, client.client_id)
+        return await self._issue(
+            gh_id, stored.get("login", ""), authorization_code.scopes, client.client_id,
+            stored.get("created"),
+        )
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         try:
@@ -170,7 +180,11 @@ class GitHubOAuthProvider(
             scopes=[MCP_SCOPE],
             expires_at=payload.get("exp"),
             subject=str(payload["sub"]),
-            claims={"login": payload.get("login", ""), "tariff": payload.get("tariff", "free")},
+            claims={
+                "login": payload.get("login", ""),
+                "tariff": payload.get("tariff", "free"),
+                "ghc": payload.get("ghc"),
+            },
         )
 
     async def load_refresh_token(
@@ -195,7 +209,9 @@ class GitHubOAuthProvider(
             raise ValueError("invalid refresh token")
         data = json.loads(raw)
         use_scopes = scopes or data["scopes"]
-        return await self._issue(data["github_id"], data["login"], use_scopes, client.client_id)
+        return await self._issue(
+            data["github_id"], data["login"], use_scopes, client.client_id, data.get("created")
+        )
 
     async def revoke_token(self, token: str, token_type_hint: str | None = None) -> None:
         await self._redis.delete(f"oauth:rt:{token}")

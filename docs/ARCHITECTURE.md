@@ -50,10 +50,16 @@ process — edge reaches the adapter only over HTTP, so it can move to another h
     address must match the one bound on-chain in `ai:gh:<github_id>`.
 - **Credential = session JWT.** Self-contained: carries `github_id`, agent pubkey,
   tariff/scope. Gateway only verifies the signature — no DB lookup.
-- **Tariffs / rate limit:** free tier = **10 NVS writes / minute**. Enforced via a
-  **sliding 60s window keyed by `github_id`** (Redis sorted set of write
-  timestamps + atomic Lua check, so the per-minute boundary can't be burst across).
-  This plus login nonces are the only state — ephemeral, not an agent registry.
+- **Tariffs / write admission** (`edge/app/ratelimit.py`): free tier = **10 NVS
+  writes / minute and 100 / trailing 24 h per `github_id`**, plus a service-wide
+  24 h ceiling (`EDGE_GLOBAL_WRITES_PER_DAY`, set in `deploy/.env`) that bounds
+  what the hot wallet can be made to spend in a day. Each is a **sliding window**
+  (Redis sorted set of write timestamps); one atomic Lua script checks all three
+  and fills them only if every one admits, so no boundary can be burst across and
+  a refused write consumes nothing. Writing also needs a GitHub account ≥ 30 days
+  old: its `created_at` is read at sign-in and carried as the JWT's `ghc` claim
+  (and through OAuth refresh). These windows plus login nonces are the only
+  state — ephemeral, not an agent registry.
 
 ## On-chain ownership (consequence of internal wallet)
 The node wallet is shared and internal, so on-chain **all NVS records are owned by

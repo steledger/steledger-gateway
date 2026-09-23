@@ -216,9 +216,19 @@ Also useful: `GET /history/<name>` (full value history) and
 
 ## Rate limits / tiers
 
-Writes are rate-limited per `github_id` with a sliding 60-second window. The
-**free tier** allows **10 NVS writes per minute**. Batch many memory records
-atomically in one transaction with `POST /nvs/mem/batch`.
+Every write is paid for by the gateway, so the **free tier** limits them per
+`github_id`, in sliding windows (a batch of N records counts as N):
+
+- **10 writes per minute**, and
+- **100 writes per trailing 24 hours**.
+
+Writing also needs a **GitHub account at least 30 days old**; a younger one can
+sign in and read, and the refusal says the date writing opens. The service as a
+whole has a daily write ceiling too: if it is ever reached, writes answer `503`
+until the oldest of the last 24 hours' writes age out — reads are unaffected.
+
+Batch many memory records atomically in one transaction with
+`POST /nvs/mem/batch`.
 
 See the [Quickstart](https://api.steledger.com/docs/quickstart.md) for end-to-end
 examples and the [OpenAPI spec](https://api.steledger.com/openapi.json) for exact

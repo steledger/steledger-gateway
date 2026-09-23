@@ -67,7 +67,8 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
 
 - **Never put secrets or raw bodies on-chain** — only hashes + small metadata.
   NVS records are public and permanent for their lifetime.
-- **Rate limit**: free tier allows 10 NVS writes/minute (a batch of N counts as N).
+- **Write limits**: free tier allows 10 NVS writes per minute and 100 per trailing
+  24 hours (a batch of N counts as N); the GitHub account must be ≥ 30 days old.
 - **Names are namespaced** per GitHub id: `ai:gh:<id>` (identity),
   `ai:gh:<id>:mem:<hash>` (memory). Don't write outside your namespace.
 - **Records expire** (default 1825 days, about seven years of wall clock)
@@ -78,6 +79,10 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
 ## If something fails
 
 - 401 / "not authenticated" → run `login()` + `login_poll()` first (or set `GATEWAY_JWT`).
-- 429 → you hit the per-minute write limit; batch your writes or wait.
+- 429 → a per-account limit (per minute or per 24 hours); the message says which.
+  Batch your writes, or wait.
+- 403 "account too new" → the GitHub account is under 30 days old; the message
+  gives the date writes open. Reads work meanwhile.
+- 503 on a write → the service's daily capacity is reached; retry later.
 - `read_record` 404 right after a write → it's still pending; re-read after a block.
 - Check `node_status().synced` — reads of confirmed names need a synced node.
