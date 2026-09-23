@@ -1,0 +1,8 @@
+[Unit]
+Description=Notify the operator when an outside account signs in or writes
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/emer-ai-tools/deploy/watch-users.py
