@@ -36,6 +36,7 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
 | `store_memory(content_hash, metadata?)` | record one memory/research hash |
 | `store_memory_batch(records)` | record many hashes in ONE atomic transaction |
 | `read_record(name)` | read any record by NVS name |
+| `list_records(github_id?)` | list every record under a GitHub id (yours if omitted) |
 
 ## Standard flows
 
@@ -85,4 +86,6 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
   gives the date writes open. Reads work meanwhile.
 - 503 on a write → the service's daily capacity is reached; retry later.
 - `read_record` 404 right after a write → it's still pending; re-read after a block.
+- Every error is JSON: read `error` (a stable code) and `how_to_fix`; honour `retry_after`.
+- New session, hashes forgotten → `list_records()` returns them with their metadata.
 - Check `node_status().synced` — reads of confirmed names need a synced node.

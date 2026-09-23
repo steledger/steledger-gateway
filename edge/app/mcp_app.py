@@ -14,6 +14,7 @@ output schemas and behaviour annotations. Shared clients via `configure()`.
 """
 from __future__ import annotations
 
+import functools
 import inspect
 import json
 import logging
@@ -36,6 +37,9 @@ from .config import settings
 from .github import GitHubOAuth
 from .oauth_provider import MCP_SCOPE, GitHubOAuthProvider
 from .ratelimit import RateLimiter
+from .client import AdapterError
+from .errors import AgentError, from_adapter
+from .records import RecordLister, page
 from .stats import Stats
 
 log = logging.getLogger("edge.mcp")
@@ -43,14 +47,18 @@ log = logging.getLogger("edge.mcp")
 _adapter: AdapterClient | None = None
 _ratelimiter: RateLimiter | None = None
 _stats: Stats | None = None
+_records: RecordLister | None = None
 
 oauth_provider = GitHubOAuthProvider()
 
 
-def configure(adapter: AdapterClient, ratelimiter: RateLimiter, stats: Stats, github: GitHubOAuth) -> None:
+def configure(
+    adapter: AdapterClient, ratelimiter: RateLimiter, stats: Stats, github: GitHubOAuth,
+    records: RecordLister,
+) -> None:
     """Inject the edge's shared clients so tools/provider reuse them (in lifespan)."""
-    global _adapter, _ratelimiter, _stats
-    _adapter, _ratelimiter, _stats = adapter, ratelimiter, stats
+    global _adapter, _ratelimiter, _stats, _records
+    _adapter, _ratelimiter, _stats, _records = adapter, ratelimiter, stats, records
     oauth_provider.configure(github, settings.redis_url)
 
 
@@ -81,7 +89,7 @@ _AUTH_REQUIRED = {
         "(the server advertises the flow at /.well-known/oauth-protected-resource). "
         "Once the session carries a Bearer token, retry this call."
     ),
-    "open_without_auth": ["node_status", "read_record", "whoami"],
+    "open_without_auth": ["node_status", "read_record", "list_records", "whoami"],
     # Derived, not hard-coded: this URL is handed to agents, and a second copy of
     # the hostname is a second thing to forget when the host moves.
     "docs": f"{settings.public_url.rstrip('/')}/docs/mcp.md",
@@ -153,6 +161,29 @@ class WhoAmI(TypedDict, total=False):
     hint: str | None
 
 
+class RecordEntry(TypedDict, total=False):
+    """One record under a GitHub id. `kind` is identity, memory or other;
+    `content_hash` is set for memories, `address` for the identity record."""
+    name: str
+    kind: str
+    content_hash: str | None
+    address: str | None
+    metadata: dict | str | None
+    registered_at: int | None
+    expires_in: int | None
+    expired: bool
+
+
+class RecordList(TypedDict):
+    """A page of records, newest first. Pass `next_offset` back as `offset` for
+    the next page; it is null on the last one."""
+    github_id: int
+    total: int
+    offset: int
+    next_offset: int | None
+    records: list[RecordEntry]
+
+
 class WriteResult(TypedDict):
     """The on-chain write: the NVS name written and its transaction id."""
     name: str
@@ -164,12 +195,13 @@ mcp = FastMCP(
     instructions=(
         "Give an AI agent a durable identity and a place to anchor what it knows, "
         "as records on a public blockchain that no single vendor owns or can switch "
-        "off. Read tools (node_status, read_record, whoami) are open to everyone — no "
+        "off. Read tools (node_status, read_record, list_records, whoami) are open to everyone — no "
         "sign-in. Write tools (register_identity, store_memory) require a GitHub "
         "sign-in via OAuth, which your MCP client performs, from a GitHub account at "
         "least 30 days old; on the FREE tier writes are limited per minute and per "
         "day. Typical flow: whoami → register_identity(address) "
-        "→ store_memory(hash) → read_record(name). A write reads back as `pending` and "
+        "→ store_memory(hash) → read_record(name); in a later session, list_records "
+        "finds what you anchored before. A write reads back as `pending` and "
         "becomes `confirmed` after the next block (about 8 minutes on average lately). The substrate is Emercoin, "
         "running since 2013 — named so that any record here can also be checked "
         "independently in a public block explorer, without trusting this service."
@@ -206,7 +238,19 @@ def _tool(**kwargs):
     def decorate(fn):
         if fn.__doc__:
             fn.__doc__ = inspect.cleandoc(fn.__doc__)
-        return register(fn)
+
+        # Refusals reach the agent as the same JSON object the REST API sends
+        # (see errors.py), not as "Error executing tool: 429: ..." prose.
+        @functools.wraps(fn)
+        async def wrapped(*args, **kwargs):
+            try:
+                return await fn(*args, **kwargs)
+            except AdapterError as exc:
+                raise ValueError(json.dumps(from_adapter(exc).detail)) from exc
+            except AgentError as exc:
+                raise ValueError(json.dumps(exc.detail)) from exc
+
+        return register(wrapped)
 
     return decorate
 
@@ -273,6 +317,55 @@ async def read_record(
     `name` is the full NVS name and is capped at 512 bytes by the chain."""
     await _record(ctx, "read_record", _principal_optional())
     return await _adapter.read(name)  # type: ignore[return-value]
+
+
+@_tool(
+    title="List records",
+    annotations=ToolAnnotations(
+        title="List records", readOnlyHint=True, idempotentHint=True, openWorldHint=True
+    ),
+    structured_output=True,
+)
+async def list_records(
+    ctx: Context,
+    github_id: Annotated[
+        int | None,
+        Field(default=None, description=(
+            "Numeric GitHub id whose records to list. Omit it to list your own "
+            "(needs a signed-in session; `whoami` shows the id)."
+        )),
+    ] = None,
+    limit: Annotated[
+        int, Field(default=50, ge=1, le=200, description="Records per page, 1–200.")
+    ] = 50,
+    offset: Annotated[
+        int, Field(default=0, ge=0, description="Where the page starts; use `next_offset` from the previous page.")
+    ] = 0,
+) -> RecordList:
+    """List every record under one GitHub id — its identity record `ai:gh:<id>` and
+    all its memories `ai:gh:<id>:mem:<hash>` — newest first, with each memory's
+    content hash and metadata. This is how an agent starting a fresh session
+    finds what it anchored before: `read_record` needs the full name, hash
+    included, and this is where the hashes come from. Read-only, no sign-in
+    needed to list any id; omit `github_id` to list your own when signed in.
+
+    What comes back is the chain's view: confirmed records only (a write still in
+    the mempool shows up after its block), expired ones included and flagged
+    `expired` — their names can be taken by someone else, so do not treat them
+    as yours. Only fingerprints and metadata live here; the content itself stays
+    wherever you stored it. Results are cached for about a minute, so a record
+    confirmed seconds ago may take that long to appear."""
+    p = _principal_optional()
+    await _record(ctx, "list_records", p)
+    if github_id is None:
+        if p is None:
+            raise ValueError(json.dumps({
+                "error": "github_id_required",
+                "message": "No github_id given, and no signed-in session to take it from.",
+                "how_to_fix": "Pass github_id, or sign in (GitHub OAuth) to list your own records.",
+            }))
+        github_id = p.github_id
+    return page(await _records.list(github_id), github_id, limit, offset)  # type: ignore[union-attr,return-value]
 
 
 @_tool(
@@ -407,9 +500,12 @@ async def store_memory(
         )),
     ] = None,
 ) -> WriteResult:
-    """Anchor a memory/artifact on-chain as the NVS record
-    `ai:gh:<github_id>:mem:<content_hash>` — a tamper-evident fingerprint others can
-    verify later. Requires a signed-in session (OAuth) and counts against the
+    """Anchor a fingerprint of a memory or artifact on-chain as the NVS record
+    `ai:gh:<github_id>:mem:<content_hash>`. Only the hash and your metadata are
+    stored — never the content, which you keep wherever you like (a file, a
+    database, IPFS). What you get is a tamper-evident, timestamped proof that
+    content with this hash existed, which anyone can verify later; `list_records`
+    finds your earlier ones again. Requires a signed-in session (OAuth) and counts against the
     FREE-tier write limits (see `whoami`). Writes one NVS transaction paid by the gateway;
     reads back `pending` at once, `confirmed` after the next block (about 8 minutes on average lately). Not
     idempotent — each distinct hash is a new record. Register your identity first

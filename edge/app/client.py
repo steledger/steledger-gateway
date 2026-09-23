@@ -57,6 +57,9 @@ class AdapterClient:
     async def history(self, name: str) -> dict:
         return await self._request("GET", f"/history/{name}")
 
+    async def filter_names(self, regex: str) -> list[dict]:
+        return (await self._request("GET", "/names/filter", params={"regex": regex}))["names"]
+
     async def address_names(self, address: str) -> dict:
         return await self._request("GET", f"/addresses/{address}/names")
 

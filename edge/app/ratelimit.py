@@ -23,10 +23,10 @@ import time
 from datetime import datetime, timezone
 
 import redis.asyncio as redis
-from fastapi import HTTPException
 
 from .auth import Principal
 from .config import settings
+from .errors import AgentError
 
 log = logging.getLogger(__name__)
 
@@ -90,28 +90,30 @@ class RateLimiter:
         refused = int(await self._script(keys=[k for k, _, _ in windows], args=args))
 
         if refused == 1:
-            raise HTTPException(
-                status_code=429,
-                detail=f"rate limit exceeded: {settings.free_tier_writes_per_min} writes per minute "
-                "per account on this tier; retry in a minute",
-                headers={"Retry-After": str(MINUTE)},
+            raise AgentError(
+                429, "rate_limited",
+                f"This account has made {settings.free_tier_writes_per_min} writes in the last minute, "
+                "the most the free tier allows.",
+                "Wait a minute, or batch memory records into one write.",
+                retry_after=MINUTE,
             )
         if refused == 2:
-            raise HTTPException(
-                status_code=429,
-                detail=f"daily limit reached: {settings.free_tier_writes_per_day} writes per 24 hours "
-                "per account on this tier; the window slides, so capacity returns as the oldest "
-                "writes age past 24 hours",
+            raise AgentError(
+                429, "daily_limit",
+                f"This account has made {settings.free_tier_writes_per_day} writes in the last 24 hours, "
+                "the most the free tier allows.",
+                "The window slides: capacity comes back as the oldest of those writes turn 24 hours old.",
+                retry_after=3600,
             )
         if refused == 3:
             # Not the caller's fault and not something they can fix: say so plainly,
             # and leave a line for whoever watches the logs.
             log.warning("global daily write ceiling reached (github_id=%s, n=%s)", gid, n)
-            raise HTTPException(
-                status_code=503,
-                detail="the service has reached its daily write capacity; reads still work, "
-                "and writes resume as the last 24 hours' writes age out — try again later",
-                headers={"Retry-After": "3600"},
+            raise AgentError(
+                503, "service_capacity",
+                "The service has reached its daily write capacity. Nothing is wrong on your side.",
+                "Retry later; writes resume as the last 24 hours' writes age out. Reads still work.",
+                retry_after=3600,
             )
 
     @staticmethod
@@ -121,11 +123,12 @@ class RateLimiter:
             return  # not a GitHub-issued token; see Principal.github_created
         eligible = created + settings.min_account_age_days * DAY
         if now < eligible:
-            raise HTTPException(
-                status_code=403,
-                detail=f"GitHub account too new to write: accounts can write "
-                f"{settings.min_account_age_days} days after creation, so this one can from "
-                f"{_utc_date(eligible)} (UTC). Reading works now, with or without sign-in.",
+            raise AgentError(
+                403, "account_too_new",
+                f"GitHub accounts can write {settings.min_account_age_days} days after they are "
+                f"created; this one can from {_utc_date(eligible)} (UTC).",
+                "Reading works now, with or without sign-in. Writes open on that date.",
+                retry_after=int(eligible - now),
             )
 
     async def ping(self) -> bool:

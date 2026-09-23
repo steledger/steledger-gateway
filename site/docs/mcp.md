@@ -57,6 +57,7 @@ Prefer to run it yourself? Use the local stdio server below.
 |------|------|--------------|
 | `node_status` | open | node sync/height (`GET /status`) |
 | `read_record` | open | read any NVS record |
+| `list_records` | open | list every record under a GitHub id, newest first — how a new session finds what it anchored before |
 | `whoami` | open | current session identity (`{authenticated: false}` with a sign-in hint until you're signed in) |
 | `register_identity` | sign-in required | register the `ai:gh:<id>` identity record |
 | `store_memory` | sign-in required | write one memory record (`ai:gh:<id>:mem:<hash>`) |
