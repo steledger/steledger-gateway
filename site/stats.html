@@ -43,18 +43,36 @@
     <h2>Per day</h2><div id="daily"></div>
     <h2>Recent</h2><div class="recent" id="recent"></div>
 
+    <h2>Refusals and errors</h2>
+    <p class="muted">Every call that did not succeed, over MCP and REST, by where it
+      happened and its error code — so it shows where agents get stuck, not only where
+      they get through. Most are the service working as designed (a malformed hash, a
+      daily limit). <code>internal_error</code> is a bug on our side.</p>
+    <div class="nums">
+      <div class="num"><b id="errtotal">–</b><span>refusals and errors</span></div>
+      <div class="num"><b id="errinternal">–</b><span>internal errors</span></div>
+    </div>
+    <h2>By tool and code</h2><div id="errcodes"></div>
+    <h2>Per day</h2><div id="errdaily"></div>
+    <h2>Recent</h2><div class="recent" id="errrecent"></div>
+
     <a class="back" href="/">← home</a>
   </div>
 
   <script>
     const $ = id => document.getElementById(id);
+    // Tool names, codes and above all client User-Agents come from callers: escape
+    // everything that is put into the page.
+    const esc = v => String(v ?? '').replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    const when = ts => new Date((ts||0)*1000).toISOString().replace('T',' ').slice(0,19);
     function bars(el, obj) {
       const entries = Object.entries(obj || {}).sort((a,b) => b[1]-a[1]);
       const max = entries.reduce((m,[,v]) => Math.max(m,v), 0) || 1;
       el.innerHTML = entries.length ? entries.map(([k,v]) =>
-        `<div class="bar"><span class="lbl" title="${k}">${k}</span>`+
+        `<div class="bar"><span class="lbl" title="${esc(k)}">${esc(k)}</span>`+
         `<span class="track"><span class="fill" style="width:${Math.round(v/max*100)}%"></span></span>`+
-        `<span class="v">${v}</span></div>`).join('') : '<span class="muted">no data yet</span>';
+        `<span class="v">${esc(v)}</span></div>`).join('') : '<span class="muted">no data yet</span>';
     }
     fetch('/stats/mcp').then(r => r.json()).then(d => {
       $('total').textContent = d.total_calls ?? 0;
@@ -64,10 +82,20 @@
       bars($('clients'), d.clients);
       bars($('daily'), d.daily);
       const r = (d.recent || []);
-      $('recent').innerHTML = r.length ? r.map(e => {
-        const t = new Date((e.ts||0)*1000).toISOString().replace('T',' ').slice(0,19);
-        return `<div>${t} · <b>${e.tool}</b> <span class="muted">${e.client||''}</span></div>`;
-      }).join('') : '<span class="muted">no calls yet</span>';
+      $('recent').innerHTML = r.length ? r.map(e =>
+        `<div>${when(e.ts)} · <b>${esc(e.tool)}</b> <span class="muted">${esc(e.client)}</span></div>`
+      ).join('') : '<span class="muted">no calls yet</span>';
+      const x = d.errors || {};
+      const codes = x.by_code || {};
+      $('errtotal').textContent = x.total ?? 0;
+      $('errinternal').textContent = Object.entries(codes)
+        .filter(([k]) => k.endsWith(':internal_error')).reduce((n,[,v]) => n + v, 0);
+      bars($('errcodes'), codes);
+      bars($('errdaily'), x.daily);
+      const xr = (x.recent || []);
+      $('errrecent').innerHTML = xr.length ? xr.map(e =>
+        `<div>${when(e.ts)} · <b>${esc(e.where)}</b> ${esc(e.code)} <span class="muted">${esc(e.client)}</span></div>`
+      ).join('') : '<span class="muted">none yet</span>';
     }).catch(() => { $('total').textContent = '!'; });
   </script>
 </body>

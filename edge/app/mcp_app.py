@@ -38,7 +38,7 @@ from .github import GitHubOAuth
 from .oauth_provider import MCP_SCOPE, GitHubOAuthProvider
 from .ratelimit import RateLimiter
 from .client import AdapterError
-from .errors import AgentError, from_adapter
+from .errors import INTERNAL_ERROR, AgentError, code_of, from_adapter
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -105,14 +105,21 @@ def _principal() -> Principal:
     return p
 
 
-async def _record(ctx: Context, tool: str, principal: Principal | None) -> None:
-    ua = ""
+def _client(ctx: Context | None) -> str:
     try:
-        ua = ctx.request_context.request.headers.get("user-agent", "")
+        return ctx.request_context.request.headers.get("user-agent", "")  # type: ignore[union-attr]
     except Exception:  # noqa: BLE001
-        pass
+        return ""
+
+
+async def _record(ctx: Context, tool: str, principal: Principal | None) -> None:
     if _stats is not None:
-        await _stats.record_call(tool, principal.github_id if principal else None, ua)
+        await _stats.record_call(tool, principal.github_id if principal else None, _client(ctx))
+
+
+async def _record_error(ctx: Context | None, tool: str, code: str) -> None:
+    if _stats is not None:
+        await _stats.record_error(tool, code, _client(ctx))
 
 
 # --- output schemas (drive each tool's outputSchema) -----------------------
@@ -282,15 +289,27 @@ def _tool(**kwargs):
             fn.__doc__ = inspect.cleandoc(fn.__doc__)
 
         # Refusals reach the agent as the same JSON object the REST API sends
-        # (see errors.py), not as "Error executing tool: 429: ..." prose.
+        # (see errors.py), not as "Error executing tool: 429: ..." prose. Every
+        # one is counted by code; anything unexpected is logged in full and
+        # reaches the agent as `internal_error`, never as a traceback.
         @functools.wraps(fn)
         async def wrapped(*args, **kwargs):
+            tool, ctx = fn.__name__, kwargs.get("ctx")
             try:
                 return await fn(*args, **kwargs)
             except AdapterError as exc:
-                raise ValueError(json.dumps(from_adapter(exc).detail)) from exc
+                detail = from_adapter(exc).detail
+                cause: Exception = exc
             except AgentError as exc:
-                raise ValueError(json.dumps(exc.detail)) from exc
+                detail, cause = exc.detail, exc
+            except ValueError as exc:  # already a JSON refusal, e.g. sign-in required
+                await _record_error(ctx, tool, code_of(exc))
+                raise
+            except Exception as exc:  # noqa: BLE001
+                log.exception("tool %s failed", tool)
+                detail, cause = INTERNAL_ERROR, exc
+            await _record_error(ctx, tool, detail["error"])
+            raise ValueError(json.dumps(detail)) from cause
 
         return register(wrapped)
 
