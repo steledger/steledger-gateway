@@ -75,6 +75,13 @@ _NODE_WRITE_ERRORS = [
         None,
     ),
     (
+        ("node busy",),
+        503, "busy",
+        "Too many reads are in flight at once; this one was turned away rather than queued.",
+        "Retry in a few seconds.",
+        5,
+    ),
+    (
         ("insufficient funds", "insufficient balance"),
         503, "service_funds",
         "The gateway's wallet cannot pay the network fee right now. Nothing is wrong on your side.",

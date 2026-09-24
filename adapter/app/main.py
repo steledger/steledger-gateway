@@ -8,6 +8,7 @@ network. Browse the surface at `/docs`.
 """
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -46,6 +47,28 @@ app = FastAPI(
 
 def get_rpc(request: Request) -> EmercoinRPC:
     return request.app.state.rpc
+
+
+# Public reads — open to anyone, no sign-in — share the node with the gateway's
+# writes and the swap's payouts, and the node serves RPC on a few threads (4 by
+# default, 16 queued). One read is a cheap key lookup; a flood of them would still
+# fill that queue. So at most READ_SLOTS run at once, the rest wait here, and a
+# read that cannot start within READ_WAIT seconds is turned away with 503 rather
+# than left hanging. Lookups that writes depend on (/holder, /valid) stay outside.
+READ_SLOTS = 3
+READ_WAIT = 5.0
+_read_slots = asyncio.Semaphore(READ_SLOTS)
+
+
+async def public_read_slot():
+    try:
+        await asyncio.wait_for(_read_slots.acquire(), READ_WAIT)
+    except TimeoutError:
+        raise HTTPException(status_code=503, detail="node busy: too many reads at once, retry shortly")
+    try:
+        yield
+    finally:
+        _read_slots.release()
 
 
 # --- schemas ---------------------------------------------------------------
@@ -231,7 +254,7 @@ async def holder(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
         raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
 
 
-@app.get("/history/{name:path}")
+@app.get("/history/{name:path}", dependencies=[Depends(public_read_slot)])
 async def name_history(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
     """Value history of an NVS name (name_history)."""
     try:
@@ -249,7 +272,7 @@ async def address_valid(address: str, rpc: EmercoinRPC = Depends(get_rpc)) -> di
         raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
 
 
-@app.get("/addresses/{address}/names")
+@app.get("/addresses/{address}/names", dependencies=[Depends(public_read_slot)])
 async def address_names(address: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
     """All names owned by an address (name_scan_address) — basis for record export.
 
@@ -277,7 +300,7 @@ async def filter_names(regex: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
         raise HTTPException(status_code=502, detail=f"name_filter failed: {exc.message}")
 
 
-@app.get("/nvs/{name:path}")
+@app.get("/nvs/{name:path}", dependencies=[Depends(public_read_slot)])
 async def read(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
     """Read an NVS record. A confirmed value comes from the name DB; a name written
     but not yet mined is reported as `pending` from the mempool.
