@@ -60,6 +60,9 @@ class AdapterClient:
     async def read(self, name: str) -> dict:
         return await self._request("GET", f"/nvs/{name}")
 
+    async def holder(self, name: str) -> dict:
+        return await self._request("GET", f"/holder/{name}")
+
     async def history(self, name: str) -> dict:
         return await self._request("GET", f"/history/{name}")
 
