@@ -7,6 +7,7 @@
   <meta name="robots" content="noindex">
   <link rel="stylesheet" href="/style.css">
   <style>
+    :root{color-scheme:light dark}  /* scrollbars and controls follow the theme */
     .card{max-width:680px;text-align:left}
     .nums{display:flex;gap:14px;margin:18px 0}
     .num{flex:1;background:var(--field);border-radius:12px;padding:16px;text-align:center}
@@ -14,14 +15,28 @@
     .num span{font-size:12px;color:var(--purple-mid)}
     h2{font-size:13px;color:var(--purple-mid);text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px}
     .bar{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:14px}
-    .bar .lbl{width:140px;color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+    .bar .lbl{width:200px;flex:none;color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:12px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .bar .track{flex:1;background:var(--field);border-radius:5px;height:14px;overflow:hidden}
-    .bar .fill{height:100%;background:var(--purple)}
+    .bar .fill{display:block;height:100%;background:var(--purple)}
     .bar .v{width:40px;text-align:right;color:var(--purple-mid);font-size:12px}
     .recent{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--ink);max-height:200px;overflow:auto}
     .recent div{padding:3px 0;border-bottom:1px solid var(--line)}
     .muted{color:var(--purple-mid);font-size:12px}
     a.back{margin-top:20px}
+    .chart{position:relative}
+    .chart svg{display:block;width:100%;height:auto;overflow:visible}
+    .chart .bar-m{fill:var(--purple)}
+    .chart .hit{fill:transparent;cursor:default}
+    .chart .hit:hover + .bar-m,.chart .bar-m.on{fill:var(--gold)}
+    .chart .axis{stroke:var(--line);stroke-width:1}
+    .chart text{fill:var(--purple-mid);font-size:11px;font-family:ui-monospace,Menlo,monospace}
+    .tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);
+      border-radius:6px;padding:4px 8px;font-size:12px;color:var(--ink);white-space:nowrap;
+      transform:translate(-50%,-100%);display:none}
+    details.table{margin-top:6px;font-size:12px;color:var(--purple-mid)}
+    details.table table{border-collapse:collapse;margin-top:4px}
+    details.table td{padding:1px 12px 1px 0;font-family:ui-monospace,Menlo,monospace;color:var(--ink)}
   </style>
 </head>
 <body>
@@ -40,7 +55,7 @@
 
     <h2>By tool</h2><div id="tools"></div>
     <h2>By client</h2><div id="clients"></div>
-    <h2>Per day</h2><div id="daily"></div>
+    <h2>Calls per day, last 30 days</h2><div class="chart" id="daily"></div>
     <h2>Recent</h2><div class="recent" id="recent"></div>
 
     <h2>Refusals and errors</h2>
@@ -53,7 +68,7 @@
       <div class="num"><b id="errinternal">–</b><span>internal errors</span></div>
     </div>
     <h2>By tool and code</h2><div id="errcodes"></div>
-    <h2>Per day</h2><div id="errdaily"></div>
+    <h2>Refusals per day, last 30 days</h2><div class="chart" id="errdaily"></div>
     <h2>Recent</h2><div class="recent" id="errrecent"></div>
 
     <a class="back" href="/">← home</a>
@@ -66,21 +81,67 @@
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c =>
       ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
     const when = ts => new Date((ts||0)*1000).toISOString().replace('T',' ').slice(0,19);
-    function bars(el, obj) {
-      const entries = Object.entries(obj || {}).sort((a,b) => b[1]-a[1]);
+    // Horizontal bars, largest first; beyond `top` entries the rest fold into one line.
+    function bars(el, obj, top = 12) {
+      const all = Object.entries(obj || {}).sort((a,b) => b[1]-a[1]);
+      const entries = all.slice(0, top), rest = all.slice(top);
       const max = entries.reduce((m,[,v]) => Math.max(m,v), 0) || 1;
       el.innerHTML = entries.length ? entries.map(([k,v]) =>
         `<div class="bar"><span class="lbl" title="${esc(k)}">${esc(k)}</span>`+
-        `<span class="track"><span class="fill" style="width:${Math.round(v/max*100)}%"></span></span>`+
-        `<span class="v">${esc(v)}</span></div>`).join('') : '<span class="muted">no data yet</span>';
+        `<span class="track"><span class="fill" style="width:${v ? Math.max(1, Math.round(v/max*100)) : 0}%"></span></span>`+
+        `<span class="v">${esc(v)}</span></div>`).join('') +
+        (rest.length ? `<div class="muted">…and ${rest.length} more, ${rest.reduce((n,[,v]) => n + v, 0)} calls between them</div>` : '')
+        : '<span class="muted">no data yet</span>';
     }
+    // One series of daily counts as columns: the last DAYS UTC days, empty days
+    // shown as zero so a quiet stretch reads as quiet rather than disappearing.
+    const DAYS = 30;
+    function daily(el, obj, noun) {
+      const today = new Date(); today.setUTCHours(0,0,0,0);
+      const rows = [...Array(DAYS)].map((_, i) => {
+        const d = new Date(today - (DAYS - 1 - i) * 864e5).toISOString().slice(0,10);
+        return [d, Number((obj || {})[d] || 0)];
+      });
+      const total = rows.reduce((n,[,v]) => n + v, 0);
+      if (!total) { el.innerHTML = `<span class="muted">none in the last ${DAYS} days</span>`; return; }
+      const W = 600, H = 120, top = 14, base = H - 18, max = Math.max(...rows.map(r => r[1]));
+      const step = W / DAYS, bw = step - 2, r = Math.min(4, bw / 2);
+      const col = ([d, v], i) => {
+        const x = i * step + 1, h = v ? Math.max(2, (v / max) * (base - top)) : 0, y = base - h, rr = Math.min(r, h);
+        const path = h ? `M${x},${base}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + bw - rr}Q${x + bw},${y} ${x + bw},${y + rr}V${base}Z` : '';
+        return `<rect class="hit" x="${i * step}" y="${top}" width="${step}" height="${base - top}" data-i="${i}"/>` +
+               `<path class="bar-m" d="${path}"/>`;
+      };
+      const lbl = (i, anchor) => `<text x="${i * step + step / 2}" y="${H - 4}" text-anchor="${anchor}">${rows[i][0].slice(5)}</text>`;
+      el.innerHTML =
+        `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(noun)} per day, last ${DAYS} days: ${total} in total, at most ${max} in a day">` +
+        `<text x="0" y="10">${max}</text>` +
+        rows.map(col).join('') +
+        `<line class="axis" x1="0" x2="${W}" y1="${base}" y2="${base}"/>` +
+        lbl(0, 'start') + lbl(Math.floor(DAYS / 2), 'middle') + lbl(DAYS - 1, 'end') +
+        `</svg><div class="tip"></div>` +
+        `<details class="table"><summary>${total} ${esc(noun)} in ${DAYS} days — as a table</summary><table>` +
+        rows.filter(([,v]) => v).reverse().map(([d,v]) => `<tr><td>${d}</td><td>${v}</td></tr>`).join('') +
+        `</table></details>`;
+      const tip = el.querySelector('.tip'), svg = el.querySelector('svg');
+      svg.addEventListener('mousemove', e => {
+        const t = e.target.closest('.hit');
+        if (!t) { tip.style.display = 'none'; return; }
+        const [d, v] = rows[+t.dataset.i], box = el.getBoundingClientRect();
+        tip.textContent = `${d} · ${v} ${noun}`;
+        tip.style.left = (e.clientX - box.left) + 'px'; tip.style.top = (e.clientY - box.top - 8) + 'px';
+        tip.style.display = 'block';
+      });
+      svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    }
+
     fetch('/stats/mcp').then(r => r.json()).then(d => {
       $('total').textContent = d.total_calls ?? 0;
       $('callers').textContent = d.unique_callers ?? 0;
       $('toolc').textContent = Object.keys(d.tools || {}).length;
       bars($('tools'), d.tools);
-      bars($('clients'), d.clients);
-      bars($('daily'), d.daily);
+      bars($('clients'), d.clients, 10);
+      daily($('daily'), d.daily, 'calls');
       const r = (d.recent || []);
       $('recent').innerHTML = r.length ? r.map(e =>
         `<div>${when(e.ts)} · <b>${esc(e.tool)}</b> <span class="muted">${esc(e.client)}</span></div>`
@@ -91,7 +152,7 @@
       $('errinternal').textContent = Object.entries(codes)
         .filter(([k]) => k.endsWith(':internal_error')).reduce((n,[,v]) => n + v, 0);
       bars($('errcodes'), codes);
-      bars($('errdaily'), x.daily);
+      daily($('errdaily'), x.daily, 'refusals');
       const xr = (x.recent || []);
       $('errrecent').innerHTML = xr.length ? xr.map(e =>
         `<div>${when(e.ts)} · <b>${esc(e.where)}</b> ${esc(e.code)} <span class="muted">${esc(e.client)}</span></div>`
