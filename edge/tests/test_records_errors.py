@@ -181,3 +181,8 @@ async def test_a_transferred_name_spends_no_quota(monkeypatch, tool, args):
         await _call(tool, args)
     assert '"not_held"' in str(exc.value) and "EHAWc65" in str(exc.value)
     assert limiter.calls == 0
+
+
+def test_busy_node_is_a_retry_not_a_fault():
+    err = from_adapter(AdapterError(503, "node busy: too many reads at once, retry shortly"))
+    assert err.status_code == 503 and err.detail["error"] == "busy" and err.detail["retry_after"] == 5

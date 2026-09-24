@@ -167,5 +167,38 @@ class TransferEndpoint(unittest.TestCase):
         self.assertEqual(r.json(), {"txid": "txid", "count": 1, "names": ["a"], "toaddress": ADDR})
 
 
+class SlowRPC(FakeRPC):
+    """name_show takes a while, like a node under load."""
+
+    async def call(self, method, *params):
+        if method == "name_show":
+            await asyncio.sleep(0.3)
+        return await super().call(method, *params)
+
+
+class PublicReads(unittest.TestCase):
+    def test_reads_beyond_the_slots_are_turned_away_and_writes_checks_are_not(self):
+        import httpx
+
+        async def scenario():
+            rpc = SlowRPC(shown={"n": {"value": "v", "address": "em1qours"}})
+            main.app.dependency_overrides[main.get_rpc] = lambda: rpc
+            old_wait, main.READ_WAIT = main.READ_WAIT, 0.1
+            try:
+                transport = httpx.ASGITransport(app=main.app)
+                async with httpx.AsyncClient(transport=transport, base_url="http://a") as c:
+                    reads = [c.get("/nvs/n") for _ in range(main.READ_SLOTS + 2)]
+                    holder = c.get("/holder/n")
+                    *read_rs, holder_r = await asyncio.gather(*reads, holder)
+            finally:
+                main.READ_WAIT = old_wait
+                main.app.dependency_overrides.clear()
+            return sorted(r.status_code for r in read_rs), holder_r.status_code
+
+        codes, holder_code = run(scenario())
+        self.assertEqual(codes, [200] * main.READ_SLOTS + [503, 503])
+        self.assertEqual(holder_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()
