@@ -17,7 +17,7 @@ Run hourly by steledger-watch-users.timer on the droplet. Three signals:
 
   - errors: internal errors (bugs on our side) as soon as the hourly run sees
     them, and once a day, after UTC midnight, a digest of the day before — calls,
-    refusals by tool and code, internal errors. Read from the counters the edge
+    refusals by tool and code, internal errors, and how sign-ins went. Read from the counters the edge
     keeps (see edge/app/stats.py). They carry no identity, so your own calls are
     counted along with everyone else's.
 
@@ -127,6 +127,13 @@ def daily_digest(day: str) -> str:
     bugs = sum(n for key, n in errors.items() if key.endswith(":internal_error"))
     if bugs:
         lines.append(f"{bugs} of them internal errors — bugs on our side.")
+    signin = redis_hash(f"oauth:funnel:day:{day}")
+    if signin:
+        lines.append(
+            f"Sign-in: {signin.get('authorize_started', 0)} sent to GitHub, "
+            f"{signin.get('github_denied', 0)} cancelled, {signin.get('state_expired', 0)} too late, "
+            f"{signin.get('github_failed', 0)} failed, {signin.get('token_issued', 0)} signed in."
+        )
     lines.append(f"{API}/stats")
     return "\n".join(lines)
 

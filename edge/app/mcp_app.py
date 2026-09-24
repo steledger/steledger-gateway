@@ -59,7 +59,7 @@ def configure(
     """Inject the edge's shared clients so tools/provider reuse them (in lifespan)."""
     global _adapter, _ratelimiter, _stats, _records
     _adapter, _ratelimiter, _stats, _records = adapter, ratelimiter, stats, records
-    oauth_provider.configure(github, settings.redis_url)
+    oauth_provider.configure(github, settings.redis_url, stats)
 
 
 def _principal_optional() -> Principal | None:

@@ -406,14 +406,22 @@ async def github_web_callback(
     # MCP client's redirect_uri with our authorization code. (Not gated by web login.)
     if state and await mcp_oauth.owns_state(state):
         if error or not code:
+            await mcp_oauth.count("github_denied")
             return HTMLResponse(web.error_page(error or "authorization failed"), status_code=400)
         return RedirectResponse(await mcp_oauth.complete_github(code, state), status_code=302)
 
     if not settings.web_login_enabled:
+        # With web login off, every sign-in here is the MCP flow: a state it no
+        # longer owns expired (ten minutes) or came from a stale link.
+        if state:
+            await mcp_oauth.count("state_expired")
         return HTMLResponse(web.error_page("Web login is disabled."), status_code=404)
     if error or not code or not state:
         return HTMLResponse(web.error_page(error or "missing authorization code"), status_code=400)
     if not await oauth.consume_state(state):
+        # An MCP sign-in that took longer than its ten minutes lands here too, since
+        # the MCP provider no longer owns the state; the two cannot be told apart.
+        await mcp_oauth.count("state_expired")
         return HTMLResponse(web.error_page("Invalid or expired sign-in state."), status_code=400)
     result = await github.exchange_code(code)
     access_token = result.get("access_token")
