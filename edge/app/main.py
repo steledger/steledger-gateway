@@ -455,8 +455,9 @@ async def create_identity(
     adapter: AdapterClient = Depends(get_adapter),
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> WriteResponse:
-    quota = await rl.admit_write(principal)
     name = names.root_name(principal.github_id)
+    await transfer.ensure_writable(adapter, [name])
+    quota = await rl.admit_write(principal)
     value = {
         "github_id": principal.github_id,
         "github_login": principal.github_login,
@@ -475,6 +476,7 @@ async def create_mem(
     rl: RateLimiter = Depends(get_ratelimiter),
 ) -> WriteResponse:
     name = names.mem_name(principal.github_id, req.content_hash)  # validates before spending quota
+    await transfer.ensure_writable(adapter, [name])
     quota = await rl.admit_write(principal)
     value = {
         "github_id": principal.github_id,
@@ -494,6 +496,7 @@ async def create_mem_batch(
 ) -> BatchWriteResponse:
     """Atomically store many memory records in one transaction (name_updatemany)."""
     mem_names = [names.mem_name(principal.github_id, r.content_hash) for r in req.records]
+    await transfer.ensure_writable(adapter, mem_names)
     quota = await rl.admit_write(principal, len(req.records))
     ops = [
         {

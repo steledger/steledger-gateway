@@ -17,7 +17,7 @@ from __future__ import annotations
 from .auth import Principal
 from .client import AdapterClient, AdapterError
 from .config import settings
-from .errors import AgentError
+from .errors import AgentError, not_held
 from .names import owned_by, root_name
 from .ratelimit import RateLimiter
 from .records import RecordLister
@@ -126,3 +126,14 @@ async def transfer(
         "after": AFTER,
         "quota": quota,
     }
+
+
+async def ensure_writable(adapter: AdapterClient, names: list[str]) -> None:
+    """Refuse, before any quota is spent, a write to a name already transferred away.
+
+    Without this the node refuses too, but only after the write was admitted —
+    so the refusal would cost a write of quota for nothing."""
+    for name in names:
+        held = await adapter.holder(name)
+        if held["state"] == "foreign":
+            raise not_held(name, held.get("address"))

@@ -222,6 +222,15 @@ def _name_op_error(what: str, exc: RPCError) -> HTTPException:
     return HTTPException(status_code=status, detail=f"{what}: {exc.message}")
 
 
+@app.get("/holder/{name:path}")
+async def holder(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
+    """Whether this wallet can still write a name: free, ours, or foreign."""
+    try:
+        return await nvs.holder(rpc, name)
+    except RPCError as exc:
+        raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
+
+
 @app.get("/history/{name:path}")
 async def name_history(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
     """Value history of an NVS name (name_history)."""

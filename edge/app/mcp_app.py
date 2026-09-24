@@ -504,8 +504,9 @@ async def register_identity(
     transaction id."""
     p = _principal()
     await _record(ctx, "register_identity", p)
-    quota = await _ratelimiter.admit_write(p)
     name = names.root_name(p.github_id)
+    await transfer.ensure_writable(_adapter, [name])  # type: ignore[arg-type]
+    quota = await _ratelimiter.admit_write(p)
     value = {
         "github_id": p.github_id,
         "github_login": p.github_login,
@@ -573,6 +574,7 @@ async def store_memory(
     p = _principal()
     await _record(ctx, "store_memory", p)
     name = names.mem_name(p.github_id, content_hash)  # validates before spending quota
+    await transfer.ensure_writable(_adapter, [name])  # type: ignore[arg-type]
     quota = await _ratelimiter.admit_write(p)
     value = {"github_id": p.github_id, "content_hash": content_hash, "metadata": metadata or {}}
     res = await _adapter.write(name, value, settings.nvs_default_days)
@@ -614,6 +616,7 @@ async def store_memory_batch(
     p = _principal()
     await _record(ctx, "store_memory_batch", p)
     items = [(names.mem_name(p.github_id, r["content_hash"]), r) for r in records]
+    await transfer.ensure_writable(_adapter, [n for n, _ in items])  # type: ignore[arg-type]
     quota = await _ratelimiter.admit_write(p, len(items))  # type: ignore[union-attr]
     ops = [
         {

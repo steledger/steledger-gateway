@@ -33,6 +33,8 @@ class FakeRPC:
 
     async def call(self, method, *params):
         self.calls.append((method, *params))
+        if method == "getaddressinfo":
+            return {"ismine": params[0] == "em1qours"}
         if method == "name_show":
             name = params[0]
             if name not in self.shown:
@@ -120,6 +122,17 @@ class Transfer(unittest.TestCase):
                 run(nvs.transfer(rpc, [name], ADDR, 1))
             self.assertEqual(cm.exception.status_code, status)
         self.assertEqual(rpc.sent("name_updatemany"), [])
+
+
+class Holder(unittest.TestCase):
+    def test_free_ours_and_foreign(self):
+        rpc = FakeRPC(shown={
+            "ours": {"address": "em1qours"},
+            "gone": {"address": ADDR},
+            "lapsed": {"address": ADDR, "expired": True},
+        })
+        states = {n: run(nvs.holder(rpc, n))["state"] for n in ("ours", "gone", "lapsed", "never")}
+        self.assertEqual(states, {"ours": "ours", "gone": "foreign", "lapsed": "free", "never": "free"})
 
 
 class TransferEndpoint(unittest.TestCase):

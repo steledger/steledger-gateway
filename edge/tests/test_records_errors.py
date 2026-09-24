@@ -156,3 +156,28 @@ async def test_bad_hash_spends_no_quota(monkeypatch):
             {"content_hash": "nope"},
         ]})
     assert '"invalid_hash"' in str(exc.value) and limiter.calls == 0
+
+
+class _HolderAdapter:
+    """Every name is held elsewhere, as after transfer_records."""
+
+    async def holder(self, name):
+        return {"name": name, "state": "foreign", "address": "EHAWc65it7HFWQrMc4YHjqUfn6kxUgMvHb"}
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("store_memory", {"content_hash": "9f9209756f6ace1b3f35a54869d5362776913aa8b434b66c514df216f3de3f10"}),
+    ("store_memory_batch", {"records": [
+        {"content_hash": "9f9209756f6ace1b3f35a54869d5362776913aa8b434b66c514df216f3de3f10"}]}),
+    ("register_identity", {"address": "em1qgyg"}),
+])
+async def test_a_transferred_name_spends_no_quota(monkeypatch, tool, args):
+    from app.auth import Principal
+    limiter = _CountingLimiter()
+    monkeypatch.setattr(mcp_app, "_ratelimiter", limiter)
+    monkeypatch.setattr(mcp_app, "_adapter", _HolderAdapter())
+    monkeypatch.setattr(mcp_app, "_principal", lambda: Principal(1, "u", "free", None))
+    with pytest.raises(ToolError) as exc:
+        await _call(tool, args)
+    assert '"not_held"' in str(exc.value) and "EHAWc65" in str(exc.value)
+    assert limiter.calls == 0

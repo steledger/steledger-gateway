@@ -91,6 +91,17 @@ _NODE_WRITE_ERRORS = [
 ]
 
 
+def not_held(name: str, address: str | None) -> AgentError:
+    """A write to a name that was transferred away — refused before any quota."""
+    return AgentError(
+        409, "not_held",
+        f"This gateway no longer holds {name}: it was transferred to {address}, and only "
+        "the holder of that address can change or renew it now.",
+        "If that address is yours, update the record with your own Emercoin node; this "
+        "service cannot. New memories under other hashes are unaffected.",
+    )
+
+
 def from_adapter(exc: AdapterError) -> AgentError:
     """Translate an adapter failure into something an agent can act on."""
     text = str(exc.detail)

@@ -99,6 +99,24 @@ async def address_is_valid(rpc: EmercoinRPC, address: str) -> bool:
     return bool((await rpc.call("validateaddress", address)).get("isvalid"))
 
 
+async def holder(rpc: EmercoinRPC, name: str) -> dict[str, Any]:
+    """Who holds `name`: "free" (never written, or its term is over), "ours" (this
+    wallet), or "foreign" (transferred away — this wallet can no longer write it).
+
+    name_show does not say whether an address is the wallet's own, so ask
+    getaddressinfo. A name only in the mempool counts as ours: this wallet wrote it.
+    """
+    try:
+        record = await show_record(rpc, name)
+    except RPCError:
+        return {"name": name, "state": "free", "address": None}
+    if record.get("expired") or record.get("deleted"):
+        return {"name": name, "state": "free", "address": record.get("address")}
+    address = record.get("address")
+    mine = bool((await rpc.call("getaddressinfo", address)).get("ismine"))
+    return {"name": name, "state": "ours" if mine else "foreign", "address": address}
+
+
 class TransferError(Exception):
     """A transfer the adapter refuses before asking the node."""
 
