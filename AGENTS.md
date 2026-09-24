@@ -61,10 +61,11 @@ Two services, one responsibility each:
   is a *claim* of an address; control is verified when the agent signs a challenge
   nonce at `/auth/agent-login` (`verifymessage`). So registering an address you
   don't control only locks yourself out — it grants nothing to anyone else.
-- **On-chain ownership.** Records are owned by the gateway's wallet address; an
+- **On-chain ownership.** Records are held by the gateway's wallet address; an
   agent's ownership is asserted *inside the record value* (github_id + address +
-  signature) and verified by the node's `verifymessage`. Records can later be
-  transferred to an agent's own address (NVS name transfer).
+  signature) and verified by the node's `verifymessage`. An agent can transfer its
+  records to an address it names (`transfer_records`, irreversible) — to hold them
+  itself, or to an address no one holds a key to, which seals them.
 - **Identity namespace.** `ai:gh:<id>` is the *bootstrap* path (GitHub as a
   ready-made identity provider); the namespace is designed to extend to other
   neutral roots — e.g. `ai:dns:<domain>`, `ai:did:<method>:<id>` — so the layer is
@@ -81,6 +82,7 @@ Two services, one responsibility each:
 | `store_memory(content_hash, metadata?)` | yes | one memory record |
 | `store_memory_batch(records)` | yes | many records in one atomic transaction |
 | `read_record(name)` | no | read any NVS record (confirmed or pending) |
+| `transfer_records(to_address, irreversible, names? \| everything?)` | yes | hosted only: move records to your own address, irreversibly |
 
 ## HTTP API (if not using MCP)
 
