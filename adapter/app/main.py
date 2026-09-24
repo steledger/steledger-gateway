@@ -66,6 +66,12 @@ class BatchWriteRequest(BaseModel):
     operations: list[WriteOp] = Field(..., min_length=1, max_length=100)
 
 
+class TransferRequest(BaseModel):
+    names: list[str] = Field(..., min_length=1, max_length=100)
+    toaddress: str = Field(..., description="destination Emercoin address; any valid one")
+    days: int = Field(..., gt=0, description="days added to each name's remaining term")
+
+
 class VerifyRequest(BaseModel):
     address: str
     signature: str
@@ -168,7 +174,7 @@ async def write(req: WriteRequest, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
     try:
         result = await nvs.write_record(rpc, req.name, req.value, days)
     except RPCError as exc:
-        raise HTTPException(status_code=502, detail=f"nvs write failed: {exc.message}")
+        raise _name_op_error("nvs write failed", exc)
     return {"name": req.name, "result": result}
 
 
@@ -186,8 +192,34 @@ async def write_batch(req: BatchWriteRequest, rpc: EmercoinRPC = Depends(get_rpc
     try:
         txid = await nvs.write_batch(rpc, ops)
     except RPCError as exc:
-        raise HTTPException(status_code=502, detail=f"batch write failed: {exc.message}")
+        raise _name_op_error("batch write failed", exc)
     return {"txid": txid, "count": len(ops), "names": [op["name"] for op in ops]}
+
+
+@app.post("/nvs/transfer")
+async def transfer(req: TransferRequest, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
+    """Move names this wallet holds to another address, in one transaction
+    (name_updatemany with `toaddress`). Irreversible: afterwards this wallet can
+    neither change nor renew them. Values are kept byte for byte."""
+    if len(set(req.names)) != len(req.names):
+        raise HTTPException(status_code=400, detail="a name may appear only once per transfer")
+    try:
+        txid = await nvs.transfer(rpc, req.names, req.toaddress, req.days)
+    except nvs.TransferError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    except RPCError as exc:
+        raise _name_op_error("transfer failed", exc)
+    return {"txid": txid, "count": len(req.names), "names": req.names, "toaddress": req.toaddress}
+
+
+# Node refusals that are the caller's situation, not a fault: 409 so the edge can
+# tell an agent what to do instead of reporting a gateway error.
+_CONFLICTS = ("pending operations", "is not yours", "on an inactive name", "on an unexpired name")
+
+
+def _name_op_error(what: str, exc: RPCError) -> HTTPException:
+    status = 409 if any(c in exc.message for c in _CONFLICTS) else 502
+    return HTTPException(status_code=status, detail=f"{what}: {exc.message}")
 
 
 @app.get("/history/{name:path}")
@@ -197,6 +229,15 @@ async def name_history(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
         return {"name": name, "history": await nvs.show_history(rpc, name)}
     except RPCError as exc:
         raise HTTPException(status_code=404, detail=f"name not found: {exc.message}")
+
+
+@app.get("/addresses/{address}/valid")
+async def address_valid(address: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
+    """Whether the node accepts this as an address (validateaddress). Costs no fee."""
+    try:
+        return {"address": address, "isvalid": await nvs.address_is_valid(rpc, address)}
+    except RPCError as exc:
+        raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
 
 
 @app.get("/addresses/{address}/names")

@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from . import names, web
+from . import names, transfer, web
 from .auth import Principal, current_principal, issue_jwt, resolve_github_token
 from .mcp_app import configure as mcp_configure
 from .mcp_app import mcp as mcp_server
@@ -177,6 +177,13 @@ class BatchWriteResponse(BaseModel):
     count: int
     names: list[str]
     quota: dict | None = None
+
+
+class TransferRequest(BaseModel):
+    to_address: str = Field(..., description="Emercoin address that will hold the records; any valid one")
+    irreversible: bool = Field(..., description="must be true: the gateway can never change, renew or return them")
+    names: list[str] | None = Field(default=None, max_length=100, description="your own records to move")
+    everything: bool = Field(default=False, description="move your identity and every live memory instead")
 
 
 class WriteResponse(BaseModel):
@@ -502,6 +509,22 @@ async def create_mem_batch(
     ]
     res = await adapter.write_batch(ops)
     return BatchWriteResponse(txid=res["txid"], count=res["count"], names=res["names"], quota=quota)
+
+
+@app.post("/nvs/transfer")
+async def transfer_records(
+    req: TransferRequest,
+    request: Request,
+    principal: Principal = Depends(current_principal),
+    adapter: AdapterClient = Depends(get_adapter),
+    rl: RateLimiter = Depends(get_ratelimiter),
+) -> dict:
+    """Hand your records over to an address you choose, in one transaction.
+    Irreversible — see the `transfer_records` MCP tool for what it means."""
+    return await transfer.transfer(
+        principal, req.to_address, req.names, req.everything, req.irreversible,
+        adapter, rl, request.app.state.records,
+    )
 
 
 @app.get("/records/{github_id}")

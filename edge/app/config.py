@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # moves with the term (it is square-rooted), and days accumulate on re-write,
     # so this governs only the agents that fall silent.
     nvs_default_days: int = 1825
+    # Days added to each name when it is transferred out, about a century. Once a
+    # name leaves the gateway's wallet only its new holder can renew it — and for
+    # an address nobody holds a key to, nobody can — so it gets its long term at
+    # the moment of transfer, not before. The fee is square-rooted: a century
+    # costs a few thousandths of an EMC.
+    transfer_days: int = 36500
 
     @model_validator(mode="after")
     def _require_strong_secret(self) -> "Settings":

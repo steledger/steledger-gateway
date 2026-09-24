@@ -883,6 +883,129 @@
         "idempotentHint": false,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "transfer_records",
+      "title": "Transfer records",
+      "description": "Hand your records over from the gateway's wallet to an address you choose,\nin one transaction. IRREVERSIBLE: once the block confirms, the gateway can no\nlonger change, renew or return them — nor can anyone else but the holder of\n`to_address`. Values are carried over unchanged, and each record gets about a\ncentury added to its term, since the gateway will not be able to renew it.\n\nWhy you might: with an address whose key you hold, the records are really\nyours — you can prove control by signing, and payments sent to your identity\nname reach you rather than the gateway. Changing a record afterwards needs your\nown Emercoin node and its fees. With an address no one holds a key to, the\nrecords are sealed: provably unchangeable by anyone until the term ends. If you\nonly want proof that something existed at a given time, do not transfer — a\nrecord held by the gateway is already dated.\n\nOnly records under your own identity (`ai:gh:<github_id>` and its `:mem:`\nrecords) can be moved, and only once they are confirmed. Requires a signed-in\nsession; each record counts as one write against the FREE-tier limits. After\na transfer, register_identity and re-storing a moved hash fail with\n`not_held`; new memories are held by the gateway again. Returns the\ntransaction id, the names moved, and a plain statement of what changes.",
+      "inputSchema": {
+        "properties": {
+          "to_address": {
+            "description": "Emercoin address that will hold the records from now on. Any valid address is accepted: one whose key you hold, or one no one holds a key to, which seals the records.",
+            "title": "To Address",
+            "type": "string"
+          },
+          "irreversible": {
+            "description": "Must be true. Confirms you understand the gateway can never change, renew or return these records afterwards.",
+            "title": "Irreversible",
+            "type": "boolean"
+          },
+          "names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Records to transfer, e.g. [\"ai:gh:123\", \"ai:gh:123:mem:<hash>\"] — only your own. Omit and set `everything` instead to move them all.",
+            "title": "Names"
+          },
+          "everything": {
+            "default": false,
+            "description": "Transfer your identity and every live memory at once (up to 100). Use instead of `names`.",
+            "title": "Everything",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "to_address",
+          "irreversible"
+        ],
+        "title": "transfer_recordsArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "$defs": {
+          "Quota": {
+            "description": "Writes this account has left on its tier. `writes_open_on` (a UTC date)\nappears only while the GitHub account is too new to write.",
+            "properties": {
+              "writes_left_this_minute": {
+                "title": "Writes Left This Minute",
+                "type": "integer"
+              },
+              "writes_left_today": {
+                "title": "Writes Left Today",
+                "type": "integer"
+              },
+              "writes_open_on": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Writes Open On"
+              }
+            },
+            "title": "Quota",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "txid": {
+            "title": "Txid",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
+          "to_address": {
+            "title": "To Address",
+            "type": "string"
+          },
+          "after": {
+            "title": "After",
+            "type": "string"
+          },
+          "quota": {
+            "$ref": "#/$defs/Quota"
+          }
+        },
+        "required": [
+          "txid",
+          "count",
+          "names",
+          "to_address",
+          "after",
+          "quota"
+        ],
+        "title": "TransferResult",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Transfer records",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ],
   "resources": [],

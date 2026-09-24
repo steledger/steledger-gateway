@@ -30,7 +30,7 @@ from pydantic import AnyHttpUrl, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-from . import names
+from . import names, transfer
 from .auth import Principal
 from .client import AdapterClient
 from .config import settings
@@ -210,6 +210,17 @@ class BatchWriteResult(TypedDict):
     quota: Quota
 
 
+class TransferResult(TypedDict):
+    """One transaction for the whole transfer: its id, the names moved, where
+    they went, what that means from now on, and the writes left afterwards."""
+    txid: str
+    count: int
+    names: list[str]
+    to_address: str
+    after: str
+    quota: Quota
+
+
 class MemoryItem(TypedDict, total=False):
     content_hash: str
     metadata: dict | None
@@ -221,7 +232,8 @@ mcp = FastMCP(
         "Give an AI agent a durable identity and a place to anchor what it knows, "
         "as records on a public blockchain that no single vendor owns or can switch "
         "off. Read tools (node_status, read_record, list_records, whoami) are open to everyone — no "
-        "sign-in. Write tools (register_identity, store_memory, store_memory_batch) require a GitHub "
+        "sign-in. Write tools (register_identity, store_memory, store_memory_batch, "
+        "transfer_records) require a GitHub "
         "sign-in via OAuth, which your MCP client performs, from a GitHub account at "
         "least 30 days old; on the FREE tier writes are limited per minute and per "
         "day. Typical flow: whoami → register_identity(address) "
@@ -609,6 +621,76 @@ async def store_memory_batch(
     ]
     res = await _adapter.write_batch(ops)  # type: ignore[union-attr]
     return {"txid": res["txid"], "count": res["count"], "names": res["names"], "quota": quota}
+
+
+@_tool(
+    title="Transfer records",
+    annotations=ToolAnnotations(
+        title="Transfer records",
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=False,
+        openWorldHint=True,
+    ),
+    structured_output=True,
+)
+async def transfer_records(
+    ctx: Context,
+    to_address: Annotated[
+        str,
+        Field(description=(
+            "Emercoin address that will hold the records from now on. Any valid address "
+            "is accepted: one whose key you hold, or one no one holds a key to, which "
+            "seals the records."
+        )),
+    ],
+    irreversible: Annotated[
+        bool,
+        Field(description=(
+            "Must be true. Confirms you understand the gateway can never change, renew "
+            "or return these records afterwards."
+        )),
+    ],
+    names: Annotated[
+        list[str] | None,
+        Field(default=None, max_length=100, description=(
+            "Records to transfer, e.g. [\"ai:gh:123\", \"ai:gh:123:mem:<hash>\"] — "
+            "only your own. Omit and set `everything` instead to move them all."
+        )),
+    ] = None,
+    everything: Annotated[
+        bool,
+        Field(default=False, description=(
+            "Transfer your identity and every live memory at once (up to 100). "
+            "Use instead of `names`."
+        )),
+    ] = False,
+) -> TransferResult:
+    """Hand your records over from the gateway's wallet to an address you choose,
+    in one transaction. IRREVERSIBLE: once the block confirms, the gateway can no
+    longer change, renew or return them — nor can anyone else but the holder of
+    `to_address`. Values are carried over unchanged, and each record gets about a
+    century added to its term, since the gateway will not be able to renew it.
+
+    Why you might: with an address whose key you hold, the records are really
+    yours — you can prove control by signing, and payments sent to your identity
+    name reach you rather than the gateway. Changing a record afterwards needs your
+    own Emercoin node and its fees. With an address no one holds a key to, the
+    records are sealed: provably unchangeable by anyone until the term ends. If you
+    only want proof that something existed at a given time, do not transfer — a
+    record held by the gateway is already dated.
+
+    Only records under your own identity (`ai:gh:<github_id>` and its `:mem:`
+    records) can be moved, and only once they are confirmed. Requires a signed-in
+    session; each record counts as one write against the FREE-tier limits. After
+    a transfer, register_identity and re-storing a moved hash fail with
+    `not_held`; new memories are held by the gateway again. Returns the
+    transaction id, the names moved, and a plain statement of what changes."""
+    p = _principal()
+    await _record(ctx, "transfer_records", p)
+    return await transfer.transfer(
+        p, to_address, names, everything, irreversible, _adapter, _ratelimiter, _records  # type: ignore[arg-type]
+    )
 
 
 def streamable_app() -> Starlette:

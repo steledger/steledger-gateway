@@ -52,6 +52,29 @@ _NODE_WRITE_ERRORS = [
         600,
     ),
     (
+        ("is not yours",),
+        409, "not_held",
+        "This gateway no longer holds that name: it was transferred to another address, "
+        "and only the holder of that address can change or renew it now.",
+        "read_record shows the name's current `address`. If it is yours, update the record "
+        "with your own node; this service cannot.",
+        None,
+    ),
+    (
+        ("not a valid emercoin address",),
+        400, "invalid_address",
+        "The destination is not a valid Emercoin address.",
+        "Check it for typos. Any valid address is accepted, including one no one holds a key to.",
+        None,
+    ),
+    (
+        ("the name is not active",),
+        409, "not_active",
+        "That record's term is over, so there is nothing to transfer.",
+        "Write it again first (store_memory or register_identity), wait for the block, then transfer.",
+        None,
+    ),
+    (
         ("insufficient funds", "insufficient balance"),
         503, "service_funds",
         "The gateway's wallet cannot pay the network fee right now. Nothing is wrong on your side.",

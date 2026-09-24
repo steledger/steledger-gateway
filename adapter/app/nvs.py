@@ -20,20 +20,49 @@ def _encode(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
 
 
-async def name_is_active(rpc: EmercoinRPC, name: str) -> bool:
-    """True if the name is registered AND still within its term (or sitting
-    unconfirmed in the mempool). Determines name_new vs name_update.
+async def _held(rpc: EmercoinRPC, name: str) -> bool:
+    """True if name_show finds the name within its term.
 
     An expired name keeps showing up in name_show (with `expired: true`), but the
     node refuses name_update on it — "name_update on an inactive name". Its term
     is over, so the name is free to register again and only name_new works.
     """
     try:
-        if not (await show_record(rpc, name)).get("expired"):
-            return True
+        return not (await show_record(rpc, name)).get("expired")
     except RPCError:
-        pass
-    return await find_in_mempool(rpc, name) is not None
+        return False
+
+
+async def name_is_active(rpc: EmercoinRPC, name: str) -> bool:
+    """True if the name is registered AND still within its term (or sitting
+    unconfirmed in the mempool). Determines name_new vs name_update."""
+    return await _held(rpc, name) or await find_in_mempool(rpc, name) is not None
+
+
+async def active_names(rpc: EmercoinRPC, names: list[str]) -> set[str]:
+    """`name_is_active` for many names, reading the mempool once rather than per name."""
+    try:
+        pending = {e.get("name") for e in await rpc.call("name_mempool") if isinstance(e, dict)}
+    except RPCError:
+        pending = set()
+    return {n for n in names if n in pending or await _held(rpc, n)}
+
+
+# Arguments never taken from a caller. `valuetype` is the dangerous one: anything
+# other than "", "hex" or "base64" is read by the node as a FILE PATH on its own
+# host, and the file's contents are written on-chain, publicly and for good. It
+# sits right after `toaddress` positionally, so every call below spells both out
+# instead of letting a missing or extra argument shift into that slot.
+TO_SELF = ""        # toaddress: a fresh key from the wallet's own keypool
+VALUE_AS_TEXT = ""  # valuetype: the value is the string itself
+VALUE_AS_BASE64 = "base64"
+
+
+def _op(verb: str, name: str, value: str, days: int, toaddress: str = TO_SELF,
+        valuetype: str = VALUE_AS_TEXT) -> dict[str, Any]:
+    """One name_updatemany operation, with every optional field set explicitly."""
+    return {verb: name, "value": value, "days": days,
+            "toaddress": toaddress, "valuetype": valuetype}
 
 
 async def write_record(rpc: EmercoinRPC, name: str, value: Any, days: int) -> Any:
@@ -44,20 +73,61 @@ async def write_record(rpc: EmercoinRPC, name: str, value: Any, days: int) -> An
     lapsed it is the other way round: only name_new can take the name back.
     """
     method = "name_update" if await name_is_active(rpc, name) else "name_new"
-    return await rpc.call(method, name, _encode(value), days)
+    return await rpc.call(method, name, _encode(value), days, TO_SELF, VALUE_AS_TEXT)
 
 
 async def write_batch(rpc: EmercoinRPC, operations: list[dict[str, Any]]) -> Any:
     """Atomic multi-record write in a single transaction (name_updatemany).
 
     `operations` is a list of {name, value, days}; returns one txid for the whole
-    batch. Note: raw JSON-RPC wants a native array here (not the string form shown
-    in bitcoin-cli examples).
+    batch. Each name gets NEW or UPDATE by the same rule as `write_record` — the
+    node refuses NEW on a held name, and one refusal fails the whole batch. Note:
+    raw JSON-RPC wants a native array here (not the string form shown in
+    bitcoin-cli examples).
     """
+    active = await active_names(rpc, [op["name"] for op in operations])
     ops = [
-        {"NEW": op["name"], "value": _encode(op["value"]), "days": op["days"]}
+        _op("UPDATE" if op["name"] in active else "NEW", op["name"], _encode(op["value"]), op["days"])
         for op in operations
     ]
+    return await rpc.call("name_updatemany", ops)
+
+
+async def address_is_valid(rpc: EmercoinRPC, address: str) -> bool:
+    """Whether the node accepts `address` as a destination. The node is the
+    authority on address formats (base58 and bech32 alike), so none is parsed here."""
+    return bool((await rpc.call("validateaddress", address)).get("isvalid"))
+
+
+class TransferError(Exception):
+    """A transfer the adapter refuses before asking the node."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
+async def transfer(rpc: EmercoinRPC, names: list[str], toaddress: str, days: int) -> Any:
+    """Move names this wallet holds to `toaddress`, in one transaction.
+
+    Irreversible: once the transaction confirms, this wallet can neither change
+    nor renew those names. Each name keeps its value byte for byte — it is read
+    and re-sent as base64 — and gets `days` added to its remaining term. Any
+    address the node accepts will do, including one nobody holds a key for,
+    which seals the record until its term runs out.
+    """
+    if not await address_is_valid(rpc, toaddress):
+        raise TransferError(400, f"{toaddress!r} is not a valid Emercoin address")
+    ops = []
+    for name in names:
+        try:
+            record = await rpc.call("name_show", name, VALUE_AS_BASE64)
+        except RPCError as exc:
+            raise TransferError(404, f"{name}: {exc.message}")
+        if record.get("expired") or record.get("deleted"):
+            raise TransferError(409, f"{name}: the name is not active, there is nothing to transfer")
+        ops.append(_op("UPDATE", name, record["value"], days, toaddress, VALUE_AS_BASE64))
     return await rpc.call("name_updatemany", ops)
 
 
