@@ -10,6 +10,7 @@ import unittest
 
 from app import transfer
 from app.auth import Principal
+from app.client import AdapterError
 from app.errors import AgentError
 
 ME = Principal(github_id=7, github_login="me", tariff="free")
@@ -17,8 +18,16 @@ ADDR = "EdCh5nZ9QuTrPbkmZXGm4e5r3iPpHS8xKM"
 
 
 class FakeAdapter:
-    def __init__(self):
+    def __init__(self, records=None):
         self.calls = []
+        self.records = records
+
+    async def read(self, name):
+        if self.records is None:
+            return {"status": "confirmed"}
+        if name not in self.records:
+            raise AdapterError(404, "name not found")
+        return self.records[name]
 
     async def address_is_valid(self, address):
         return address == ADDR
@@ -81,6 +90,21 @@ class Policy(unittest.TestCase):
             ))
         self.assertEqual(cm.exception.detail["error"], "invalid_address")
         self.assertEqual((limiter.admitted, adapter.calls), ([], []))
+
+    def test_unconfirmed_missing_or_lapsed_names_spend_no_quota(self):
+        cases = {
+            "record_pending": {"status": "pending"},
+            "not_active": {"status": "confirmed", "expired": True},
+        }
+        for code, record in [*cases.items(), ("not_found", None)]:
+            adapter = FakeAdapter({} if record is None else {"ai:gh:7": record})
+            limiter = FakeLimiter()
+            with self.assertRaises(AgentError) as cm:
+                asyncio.run(transfer.transfer(
+                    ME, ADDR, ["ai:gh:7"], False, True, adapter, limiter, FakeRecords([])
+                ))
+            self.assertEqual(cm.exception.detail["error"], code)
+            self.assertEqual((limiter.admitted, adapter.calls), ([], []))
 
     def test_listed_names_go_out_with_a_century_and_quota_per_name(self):
         mem = "ai:gh:7:mem:" + "b" * 64

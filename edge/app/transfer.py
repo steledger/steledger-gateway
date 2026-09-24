@@ -15,7 +15,7 @@ Policy lives here; the adapter only moves names. Shared by REST and MCP.
 from __future__ import annotations
 
 from .auth import Principal
-from .client import AdapterClient
+from .client import AdapterClient, AdapterError
 from .config import settings
 from .errors import AgentError
 from .names import owned_by, root_name
@@ -85,13 +85,37 @@ async def transfer(
             f"{root_name(principal.github_id)}:mem:<hash>; list_records shows them.",
         )
 
-    # Before the quota, so a typo costs nothing. The adapter checks again.
+    # Everything checkable is checked before the quota, so a refusal costs
+    # nothing; the adapter checks again. The address first — one call — then
+    # each name, which is a cheap key lookup.
     if not await adapter.address_is_valid(to_address):
         raise AgentError(
             400, "invalid_address",
             f"{to_address[:80]!r} is not a valid Emercoin address.",
             "Check it for typos. Any valid address is accepted, including one no one holds a key to.",
         )
+    for name in names:
+        try:
+            record = await adapter.read(name)
+        except AdapterError as exc:
+            if exc.status_code == 404:
+                raise AgentError(
+                    404, "not_found", f"{name} does not exist on the chain.",
+                    "Check the name, hash included; list_records shows your records.",
+                )
+            raise
+        if record.get("status") == "pending" or record.get("pending_update"):
+            raise AgentError(
+                409, "record_pending",
+                f"{name} is still waiting for its block; only confirmed records can be transferred.",
+                "Wait until read_record shows it `confirmed` (about 8 minutes), then retry.",
+                600,
+            )
+        if record.get("expired"):
+            raise AgentError(
+                409, "not_active", f"{name}'s term is over, so there is nothing to transfer.",
+                "Write it again first, wait for the block, then transfer.",
+            )
     quota = await ratelimiter.admit_write(principal, len(names))
     res = await adapter.transfer(names, to_address, settings.transfer_days)
     return {
