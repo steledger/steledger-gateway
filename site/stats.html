@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/style.css">
   <style>
     :root{color-scheme:light dark}  /* scrollbars and controls follow the theme */
-    .card{max-width:680px;text-align:left}
+    .card{max-width:880px;text-align:left}
     .nums{display:flex;gap:14px;margin:18px 0}
     .num{flex:1;background:var(--field);border-radius:12px;padding:16px;text-align:center}
     .num b{display:block;font-size:30px;color:var(--purple);line-height:1.1}
@@ -80,14 +80,21 @@
     // everything that is put into the page.
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c =>
       ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    // A client's User-Agent, cut to what names it: "x/1.0 (+https://…)" -> "x/1.0",
+    // and "Mozilla/5.0 (compatible; probe/0.1)" -> "probe/0.1". Full text on hover.
+    const shortUA = ua => {
+      ua = String(ua ?? '');
+      const compat = ua.match(/\(compatible;\s*([^;)]+)/);
+      return (compat ? compat[1] : ua.replace(/\s*\(.*$/, '')).trim() || ua;
+    };
     const when = ts => new Date((ts||0)*1000).toISOString().replace('T',' ').slice(0,19);
     // Horizontal bars, largest first; beyond `top` entries the rest fold into one line.
-    function bars(el, obj, top = 12) {
+    function bars(el, obj, top = 12, short = k => k) {
       const all = Object.entries(obj || {}).sort((a,b) => b[1]-a[1]);
       const entries = all.slice(0, top), rest = all.slice(top);
       const max = entries.reduce((m,[,v]) => Math.max(m,v), 0) || 1;
       el.innerHTML = entries.length ? entries.map(([k,v]) =>
-        `<div class="bar"><span class="lbl" title="${esc(k)}">${esc(k)}</span>`+
+        `<div class="bar"><span class="lbl" title="${esc(k)}">${esc(short(k))}</span>`+
         `<span class="track"><span class="fill" style="width:${v ? Math.max(1, Math.round(v/max*100)) : 0}%"></span></span>`+
         `<span class="v">${esc(v)}</span></div>`).join('') +
         (rest.length ? `<div class="muted">…and ${rest.length} more, ${rest.reduce((n,[,v]) => n + v, 0)} calls between them</div>` : '')
@@ -104,7 +111,8 @@
       });
       const total = rows.reduce((n,[,v]) => n + v, 0);
       if (!total) { el.innerHTML = `<span class="muted">none in the last ${DAYS} days</span>`; return; }
-      const W = 600, H = 120, top = 14, base = H - 18, max = Math.max(...rows.map(r => r[1]));
+      // Drawn at the container's own width, so the labels stay 11px however wide the card is.
+      const W = Math.max(300, Math.round(el.clientWidth) || 600), H = 120, top = 14, base = H - 18, max = Math.max(...rows.map(r => r[1]));
       const step = W / DAYS, bw = step - 2, r = Math.min(4, bw / 2);
       const col = ([d, v], i) => {
         const x = i * step + 1, h = v ? Math.max(2, (v / max) * (base - top)) : 0, y = base - h, rr = Math.min(r, h);
@@ -140,11 +148,11 @@
       $('callers').textContent = d.unique_callers ?? 0;
       $('toolc').textContent = Object.keys(d.tools || {}).length;
       bars($('tools'), d.tools);
-      bars($('clients'), d.clients, 10);
+      bars($('clients'), d.clients, 10, shortUA);
       daily($('daily'), d.daily, 'calls');
       const r = (d.recent || []);
       $('recent').innerHTML = r.length ? r.map(e =>
-        `<div>${when(e.ts)} · <b>${esc(e.tool)}</b> <span class="muted">${esc(e.client)}</span></div>`
+        `<div>${when(e.ts)} · <b>${esc(e.tool)}</b> <span class="muted" title="${esc(e.client)}">${esc(shortUA(e.client))}</span></div>`
       ).join('') : '<span class="muted">no calls yet</span>';
       const x = d.errors || {};
       const codes = x.by_code || {};
@@ -155,7 +163,7 @@
       daily($('errdaily'), x.daily, 'refusals');
       const xr = (x.recent || []);
       $('errrecent').innerHTML = xr.length ? xr.map(e =>
-        `<div>${when(e.ts)} · <b>${esc(e.where)}</b> ${esc(e.code)} <span class="muted">${esc(e.client)}</span></div>`
+        `<div>${when(e.ts)} · <b>${esc(e.where)}</b> ${esc(e.code)} <span class="muted" title="${esc(e.client)}">${esc(shortUA(e.client))}</span></div>`
       ).join('') : '<span class="muted">none yet</span>';
     }).catch(() => { $('total').textContent = '!'; });
   </script>
