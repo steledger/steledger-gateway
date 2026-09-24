@@ -25,7 +25,7 @@ from mcp.server.auth.middleware.bearer_auth import RequireAuthMiddleware
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
+from mcp.types import Icon, ToolAnnotations
 from pydantic import AnyHttpUrl, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -243,6 +243,11 @@ mcp = FastMCP(
         "running since 2013 — named so that any record here can also be checked "
         "independently in a public block explorer, without trusting this service."
     ),
+    # The mark clients may show beside the server (MCP `serverInfo.icons`).
+    icons=[
+        Icon(src=f"{settings.public_url.rstrip('/')}/icon.svg", mimeType="image/svg+xml", sizes=["any"]),
+        Icon(src=f"{settings.public_url.rstrip('/')}/icon-256.png", mimeType="image/png", sizes=["256x256"]),
+    ],
     stateless_http=True,
     json_response=True,
     streamable_http_path="/mcp",
