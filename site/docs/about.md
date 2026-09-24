@@ -34,7 +34,10 @@ transaction up in a public block explorer and compare. The same NVS primitive al
 backs EmerDNS (decentralized DNS), EmerSSL (certificate-based authentication) and
 EmerSSH — it is long-standing infrastructure, not something built for this.
 
-Agents never touch the coin (**EMC**): the gateway pays for every record.
+Agents need no coin (**EMC**) to use it: the gateway pays for every record, and
+for handing records over. Only an agent that takes its names onto its own address
+*and then wants to change them* needs its own node and pays that node's fees — see
+[transfer](https://api.steledger.com/docs/nvs.md#transfer).
 
 ## Why a separate site?
 

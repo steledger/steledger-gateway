@@ -36,12 +36,43 @@ gateway hot-wallet address**. Agent ownership is asserted *inside the value*
 GitHub and recorded on-chain. Control of the bound address can be proven later via
 the signature login (`POST /auth/challenge` → sign the nonce → `POST /auth/agent-login`).
 
-Say it plainly: because the gateway holds the names, **it could technically change
+Say it plainly: while the gateway holds the names, **it could technically change
 a record**. It cannot do so unseen — every version of every record stays in the
 chain's public history (`GET /history/<name>`, or any block explorer), and the
 gateway's code is open — so tampering would be detectable, not impossible. An agent
-that needs a record nobody else can touch needs the name on its own address, which
-this service does not offer today.
+that needs a record nobody else can touch can take the name onto an address of its
+own: see Transfer below.
+
+## Transfer
+
+`transfer_records` over MCP, `POST /nvs/transfer` over HTTP, moves your records
+from the gateway's wallet to an address you choose, in one transaction. **It is
+irreversible**: once the block confirms, the gateway can no longer change, renew
+or return those names. The call therefore requires `irreversible: true`.
+
+```json
+{"to_address": "E…", "irreversible": true, "names": ["ai:gh:<id>:mem:<hash>"]}
+```
+
+or `"everything": true` instead of `names` for your identity and every live memory
+(at most 100 per call). Only names under your own `ai:gh:<github_id>`, and only
+once confirmed; each counts as one write against the limits.
+
+- Values move **byte for byte**, unchanged.
+- Each name gets **36 500 days** (about a century) added to its term at the moment
+  of transfer, since the gateway will not be able to renew it afterwards.
+- **Any valid address is accepted.** With an address whose key you hold, the
+  records are yours: you can prove control by signing, and coins sent to the name
+  (wallets can pay a name's holder) reach you instead of the gateway. Changing a
+  record later takes your own Emercoin node and its fees. With an address no one
+  holds a key to, the records are **sealed**: provably unchangeable by anyone until
+  the term ends.
+- If you only need proof that something existed at a given time, **do not
+  transfer** — a record held by the gateway is already dated.
+
+After a transfer, `register_identity` or re-storing a moved hash answers
+`not_held`; new memories are held by the gateway again and can be transferred
+later.
 
 ## Expiry
 
@@ -71,7 +102,8 @@ with each memory's hash and metadata (`?limit=`, `?offset=`; confirmed records
 only, cached for a minute). Over MCP this is `list_records`.
 
 Also useful: `GET /history/<name>` (full value history) and
-`GET /addresses/<address>/names` (all names an address owns).
+`GET /addresses/<address>/names` (all names an address owns). A read's `address`
+tells you who holds a name now: the gateway, or the address it was transferred to.
 
 ## Errors
 
@@ -83,10 +115,14 @@ the JSON text of the tool error over MCP:
 ```
 
 `error` is a stable code: `authentication_required`, `account_too_new`,
-`rate_limited`, `daily_limit`, `service_capacity`, `record_pending`,
-`value_too_large`, `not_found`, `service_funds`, `node_unavailable`, or
-`node_error` (the node's own message, passed through). `retry_after` is in
-seconds and appears only when waiting helps.
+`rate_limited`, `daily_limit`, `service_capacity`, `invalid_hash`,
+`record_pending`, `value_too_large`, `not_found`, `not_held`, `service_funds`,
+`busy`, `node_unavailable`, `internal_error` (a bug on our side, logged), or
+`node_error` (the node's own message, passed through). Transfer adds
+`confirmation_required`, `invalid_selection`, `not_your_record`,
+`too_many_names`, `invalid_address`, `not_active` and `nothing_to_transfer`.
+`retry_after` is in seconds and appears only when waiting helps. Refusals are
+counted by code — never by caller — at https://api.steledger.com/stats.
 
 ## Rate limits / tiers
 

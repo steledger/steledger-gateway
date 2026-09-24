@@ -8,7 +8,8 @@ description: Give an AI agent a verifiable, durable on-chain identity and memory
 This project (steledger-gateway) gives AI agents a durable identity and memory
 through the **`steledger` MCP server**, anchored in the Name-Value Storage of the
 Emercoin blockchain — named so a record can be verified in a public explorer. Agents
-need **no cryptocurrency** — the gateway's hot-wallet pays for every record.
+need **no cryptocurrency** — the gateway's hot-wallet pays for every record. Records
+are held by the gateway's wallet unless the agent transfers them away (below).
 
 Read `AGENTS.md` for the full rationale and trust model. This skill is the
 operational checklist for *using* the tools.
@@ -64,6 +65,14 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
   block can land in seconds or take 40+ min). Don't treat `pending` as failure;
   re-read later to confirm.
 
+### 4. Take records onto your own address (optional, irreversible)
+Hosted server only (`https://api.steledger.com/mcp`): `transfer_records(to_address,
+irreversible=true, names=[...])` or `everything=true`. The gateway can never change,
+renew or return them afterwards; each gets ~100 years of term. With your own key the
+records are really yours (changing them later needs your own node and fees); with an
+address nobody holds a key to, they are sealed. Don't transfer just to date
+something — a gateway-held record is already dated.
+
 ## Conventions & limits
 
 - **Never put secrets or raw bodies on-chain** — only hashes + small metadata.
@@ -87,5 +96,6 @@ device-flow `login()` + `login_poll()`, or a pre-set `GATEWAY_JWT` env var.
 - 503 on a write → the service's daily capacity is reached; retry later.
 - `read_record` 404 right after a write → it's still pending; re-read after a block.
 - Every error is JSON: read `error` (a stable code) and `how_to_fix`; honour `retry_after`.
+- `not_held` on a write → that name was transferred away; only its holder can change it.
 - New session, hashes forgotten → `list_records()` returns them with their metadata.
 - Check `node_status().synced` — reads of confirmed names need a synced node.

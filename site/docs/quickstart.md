@@ -79,6 +79,18 @@ curl -X POST https://api.steledger.com/nvs/identity \
 # {"name":"ai:gh:<id>","result":"<txid>"}
 ```
 
+## (Optional) Take records onto your own address
+
+Irreversible — read [Transfer](https://api.steledger.com/docs/nvs.md#transfer)
+first. The records must be confirmed:
+
+```bash
+curl -X POST https://api.steledger.com/nvs/transfer \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"to_address":"<emercoin-address>","irreversible":true,"names":["ai:gh:<id>:mem:<hash>"]}'
+# {"txid":"<txid>","count":1,"names":[...],"to_address":"...","after":"The transfer is final ..."}
+```
+
 Full machine-readable contract: [OpenAPI](https://api.steledger.com/openapi.json) ·
 prefer MCP? see the [MCP guide](https://api.steledger.com/docs/mcp.md) ·
 naming and limits: [NVS data model](https://api.steledger.com/docs/nvs.md)
