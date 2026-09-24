@@ -15,7 +15,13 @@ Run hourly by steledger-watch-users.timer on the droplet. Three signals:
     of replies is still a single message an hour. Read with the app's bearer
     token, which never rotates; the posting token lives on a laptop and does.
 
-Your own ids (KNOWN_GITHUB_IDS) are left out of both. State lives in
+  - errors: internal errors (bugs on our side) as soon as the hourly run sees
+    them, and once a day, after UTC midnight, a digest of the day before — calls,
+    refusals by tool and code, internal errors. Read from the counters the edge
+    keeps (see edge/app/stats.py). They carry no identity, so your own calls are
+    counted along with everyone else's.
+
+Your own ids (KNOWN_GITHUB_IDS) are left out of writers and sign-ins. State lives in
 /var/lib/steledger-watch/state.json; a failed send leaves it untouched, so the
 next run tries again.
 
@@ -36,6 +42,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -87,6 +94,41 @@ def signed_in(known: set) -> int:
     total = int(run(REDIS + ["SCARD", "mcp:callers"]).strip() or 0)
     mine = sum(int(run(REDIS + ["SISMEMBER", "mcp:callers", k]).strip() or 0) for k in known)
     return total - mine
+
+
+def redis_hash(key: str) -> dict:
+    """HGETALL through redis-cli --raw: field and value on alternate lines."""
+    lines = run(REDIS + ["HGETALL", key]).splitlines()
+    return {lines[i]: int(lines[i + 1]) for i in range(0, len(lines) - 1, 2)}
+
+
+def internal_errors() -> int:
+    return int(run(REDIS + ["GET", "mcp:errors:internal"]).strip() or 0)
+
+
+def internal_digest(new: int) -> str:
+    recent = [json.loads(x) for x in run(REDIS + ["LRANGE", "mcp:errors:recent", "0", "199"]).splitlines() if x]
+    bugs = [e for e in recent if e.get("code") == "internal_error"][:min(new, DIGEST_ITEMS)]
+    lines = [f"Steledger: {new} new internal error(s) — a bug on our side. "
+             "Tracebacks are in the edge log (docker logs emer-edge)."]
+    for e in bugs:
+        when = time.strftime("%H:%M UTC", time.gmtime(e["ts"]))
+        lines.append(f"• {when} {e['where']} ({e.get('client') or 'no client'})")
+    return "\n".join(lines)
+
+
+def daily_digest(day: str) -> str:
+    calls = redis_hash("mcp:daily").get(day, 0)
+    errors = redis_hash(f"mcp:errors:day:{day}")
+    total = sum(errors.values())
+    lines = [f"Steledger, {day}: {calls} MCP tool call(s); {total} refusal(s) and error(s) over MCP and REST."]
+    for key, n in sorted(errors.items(), key=lambda kv: -kv[1])[:8]:
+        lines.append(f"• {key} × {n}")
+    bugs = sum(n for key, n in errors.items() if key.endswith(":internal_error"))
+    if bugs:
+        lines.append(f"{bugs} of them internal errors — bugs on our side.")
+    lines.append(f"{API}/stats")
+    return "\n".join(lines)
 
 
 def x_mentions(conf: dict, since_id: str | None) -> list:
@@ -148,7 +190,11 @@ def main() -> None:
         STATE.write_text(json.dumps({"writers": sorted(now_writers), "signed_in": now_signed_in}))
         return
     # "x" is absent until the X digest has run once; then {"since_id": newest seen or None}.
-    new_state = {"writers": sorted(now_writers), "signed_in": now_signed_in, "x": state.get("x")}
+    # "internal" and "digest_day" likewise start quietly on their first run.
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    now_internal = internal_errors()
+    new_state = {"writers": sorted(now_writers), "signed_in": now_signed_in, "x": state.get("x"),
+                 "internal": now_internal, "digest_day": today}
 
     messages = []
     for gid in sorted(set(now_writers) - set(state["writers"])):
@@ -163,6 +209,11 @@ def main() -> None:
             f"Steledger: {now_signed_in - state['signed_in']} new signed-in account(s) — "
             f"{now_signed_in} outside accounts so far. No identity shown: sign-ins are counted, not listed."
         )
+
+    if "internal" in state and now_internal > state["internal"]:
+        messages.append(internal_digest(now_internal - state["internal"]))
+    if "digest_day" in state and state["digest_day"] != today:
+        messages.append(daily_digest(state["digest_day"]))
 
     if conf.get("X_BEARER_TOKEN") and conf.get("X_USER_ID"):
         seen = state.get("x")

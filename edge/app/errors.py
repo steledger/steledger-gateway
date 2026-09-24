@@ -12,6 +12,7 @@ error's text, JSON-encoded, with `isError: true`.
 """
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import HTTPException
@@ -96,6 +97,24 @@ _NODE_WRITE_ERRORS = [
         None,
     ),
 ]
+
+
+# The answer to anything unexpected: the agent gets a code it can act on, never
+# a traceback; we get the traceback in the log and a count in the stats.
+INTERNAL_ERROR = {
+    "error": "internal_error",
+    "message": "Something failed on our side. It has been logged and counted.",
+    "how_to_fix": "Retry once. If it keeps failing, it is our bug: "
+                  "https://github.com/steledger/steledger-gateway/issues",
+}
+
+
+def code_of(exc: Exception) -> str:
+    """The stable code carried by a refusal already rendered as JSON text."""
+    try:
+        return str(json.loads(str(exc))["error"])
+    except (ValueError, KeyError, TypeError):
+        return "invalid_input"
 
 
 def not_held(name: str, address: str | None) -> AgentError:

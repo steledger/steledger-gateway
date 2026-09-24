@@ -11,6 +11,9 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -26,7 +29,7 @@ from .config import settings
 from .github import GitHubOAuth
 from .oauth_state import OAuthStateStore
 from .ratelimit import RateLimiter
-from .errors import from_adapter
+from .errors import INTERNAL_ERROR, from_adapter
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -35,6 +38,7 @@ from .stats import Stats
 # adapter prints a line nobody reads. Keep the library quiet; edge.* loggers and
 # uvicorn's access log carry what matters.
 logging.getLogger("httpx").setLevel(logging.WARNING)
+log = logging.getLogger("edge")
 
 
 @asynccontextmanager
@@ -90,10 +94,42 @@ class _StripMcpSlash:
 app.add_middleware(_StripMcpSlash)
 
 
+async def _count_error(request: Request, code: str) -> None:
+    """Count a refusal on a matched API route; stray paths (scanners) are not ours."""
+    route = request.scope.get("route")
+    if route is None or not hasattr(request.app.state, "stats"):
+        return
+    await request.app.state.stats.record_error(
+        f"{request.method} {route.path}", code, request.headers.get("user-agent", "")
+    )
+
+
 @app.exception_handler(AdapterError)
 async def _adapter_error(request: Request, exc: AdapterError) -> JSONResponse:
     err = from_adapter(exc)
+    await _count_error(request, err.detail["error"])
     return JSONResponse(status_code=err.status_code, content={"detail": err.detail}, headers=err.headers)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    detail = exc.detail
+    await _count_error(request, detail["error"] if isinstance(detail, dict) and "error" in detail
+                       else f"http_{exc.status_code}")
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+    await _count_error(request, "invalid_request")
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(Exception)
+async def _internal_error(request: Request, exc: Exception) -> JSONResponse:
+    log.exception("%s %s failed", request.method, request.url.path)
+    await _count_error(request, INTERNAL_ERROR["error"])
+    return JSONResponse(status_code=500, content={"detail": INTERNAL_ERROR})
 
 
 def get_adapter(request: Request) -> AdapterClient:

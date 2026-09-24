@@ -5,6 +5,12 @@ authenticated (counted as a unique github_id, never stored by name in the public
 view), the client (HTTP User-Agent), and a per-day total. Best-effort: a Redis
 hiccup must never break a tool call. The public snapshot exposes aggregates only —
 no per-user identities.
+
+Refusals and failures are counted too — over MCP and REST — by where they
+happened and their stable error code (see errors.py), so it shows where agents
+get stuck and not only where they succeed. An error event holds the tool or
+route, the code, the client and the time: never the caller, never the
+arguments. `internal_error` is the one that means a bug on our side.
 """
 from __future__ import annotations
 
@@ -17,6 +23,8 @@ import redis.asyncio as redis
 log = logging.getLogger("edge.stats")
 
 _RECENT_MAX = 200
+_ERROR_DAYS_KEPT = 35 * 86400  # per-day breakdowns; the all-time totals stay
+INTERNAL = "internal_error"
 
 
 class Stats:
@@ -42,6 +50,26 @@ class Stats:
         except Exception as exc:  # noqa: BLE001 — stats must never break a call
             log.warning("stats record failed: %s", exc)
 
+    async def record_error(self, where: str, code: str, client: str) -> None:
+        """Best-effort: count one refusal or failure at `where` (a tool or a route)."""
+        try:
+            ts = int(time.time())
+            day = time.strftime("%Y-%m-%d", time.gmtime(ts))
+            key = f"{where}:{code}"
+            pipe = self._redis.pipeline()
+            pipe.hincrby("mcp:errors", key, 1)
+            pipe.hincrby("mcp:errors:daily", day, 1)
+            pipe.hincrby(f"mcp:errors:day:{day}", key, 1)
+            pipe.expire(f"mcp:errors:day:{day}", _ERROR_DAYS_KEPT)
+            if code == INTERNAL:
+                pipe.incr("mcp:errors:internal")
+            pipe.lpush("mcp:errors:recent", json.dumps(
+                {"ts": ts, "where": where, "code": code, "client": client[:80]}))
+            pipe.ltrim("mcp:errors:recent", 0, _RECENT_MAX - 1)
+            await pipe.execute()
+        except Exception as exc:  # noqa: BLE001 — stats must never break a call
+            log.warning("stats error record failed: %s", exc)
+
     async def snapshot(self) -> dict:
         """Aggregate view (no per-user identities)."""
         try:
@@ -52,7 +80,11 @@ class Stats:
             pipe.scard("mcp:callers")
             pipe.hgetall("mcp:clients")
             pipe.lrange("mcp:recent", 0, 49)
-            total, tools, daily, callers, clients, recent = await pipe.execute()
+            pipe.hgetall("mcp:errors")
+            pipe.hgetall("mcp:errors:daily")
+            pipe.lrange("mcp:errors:recent", 0, 49)
+            (total, tools, daily, callers, clients, recent,
+             errors, errors_daily, errors_recent) = await pipe.execute()
         except Exception as exc:  # noqa: BLE001
             log.warning("stats snapshot failed: %s", exc)
             return {"error": "stats unavailable"}
@@ -63,6 +95,12 @@ class Stats:
             "clients": {k: int(v) for k, v in (clients or {}).items()},
             "daily": {k: int(v) for k, v in (daily or {}).items()},
             "recent": [json.loads(x) for x in (recent or [])],
+            "errors": {
+                "total": sum(int(v) for v in (errors or {}).values()),
+                "by_code": {k: int(v) for k, v in (errors or {}).items()},
+                "daily": {k: int(v) for k, v in (errors_daily or {}).items()},
+                "recent": [json.loads(x) for x in (errors_recent or [])],
+            },
         }
 
     async def aclose(self) -> None:
