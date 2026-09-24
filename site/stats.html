@@ -58,6 +58,12 @@
     <h2>Calls per day, last 30 days</h2><div class="chart" id="daily"></div>
     <h2>Recent</h2><div class="recent" id="recent"></div>
 
+    <h2>Sign-in, last 30 days</h2>
+    <p class="muted">Each step of the OAuth sign-in an MCP client runs through GitHub,
+      in order. Where the numbers drop between two steps is where people or agents give
+      up before calling a single tool. Counts only, never who.</p>
+    <div id="signin"></div>
+
     <h2>Refusals and errors</h2>
     <p class="muted">Every call that did not succeed, over MCP and REST, by where it
       happened and its error code — so it shows where agents get stuck, not only where
@@ -143,6 +149,23 @@
       svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
     }
 
+    const STEP_LABELS = {
+      client_registered: 'client registered', authorize_started: 'sent to GitHub',
+      github_denied: 'cancelled at GitHub', state_expired: 'came back too late',
+      github_failed: 'GitHub exchange failed', github_ok: 'GitHub sign-in done',
+      token_issued: 'signed in', token_refreshed: 'token refreshed later',
+    };
+    // Fixed order, not sorted: a funnel reads top to bottom.
+    function funnel(el, s) {
+      const counts = (s || {}).last_30_days || {}, steps = (s || {}).steps || [];
+      const max = Math.max(1, ...steps.map(k => counts[k] || 0));
+      if (!steps.some(k => counts[k])) { el.innerHTML = '<span class="muted">no sign-ins in the last 30 days</span>'; return; }
+      el.innerHTML = steps.map(k => { const v = counts[k] || 0; return (
+        `<div class="bar"><span class="lbl" title="${esc(k)}">${esc(STEP_LABELS[k] || k)}</span>`+
+        `<span class="track"><span class="fill" style="width:${v ? Math.max(1, Math.round(v/max*100)) : 0}%"></span></span>`+
+        `<span class="v">${esc(v)}</span></div>`); }).join('');
+    }
+
     fetch('/stats/mcp').then(r => r.json()).then(d => {
       $('total').textContent = d.total_calls ?? 0;
       $('callers').textContent = d.unique_callers ?? 0;
@@ -154,6 +177,7 @@
       $('recent').innerHTML = r.length ? r.map(e =>
         `<div>${when(e.ts)} · <b>${esc(e.tool)}</b> <span class="muted" title="${esc(e.client)}">${esc(shortUA(e.client))}</span></div>`
       ).join('') : '<span class="muted">no calls yet</span>';
+      funnel($('signin'), d.signin);
       const x = d.errors || {};
       const codes = x.by_code || {};
       $('errtotal').textContent = x.total ?? 0;

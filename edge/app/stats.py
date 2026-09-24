@@ -26,6 +26,19 @@ _RECENT_MAX = 200
 _ERROR_DAYS_KEPT = 35 * 86400  # per-day breakdowns; the all-time totals stay
 INTERNAL = "internal_error"
 
+# The MCP OAuth sign-in, in order. Where the counts fall off between two steps is
+# where agents (or the people behind them) give up before any tool call.
+SIGNIN_STEPS = (
+    "client_registered",   # the MCP client registered itself (DCR)
+    "authorize_started",   # sent to GitHub's consent screen
+    "github_denied",       # came back from GitHub with an error — usually "cancel"
+    "state_expired",       # came back after the 10-minute window, or with a stale link
+    "github_failed",       # GitHub accepted, but exchanging its code failed
+    "github_ok",           # GitHub sign-in done, our code handed to the client
+    "token_issued",        # the client redeemed it: signed in
+    "token_refreshed",     # a later session renewed its token
+)
+
 
 class Stats:
     def __init__(self, url: str) -> None:
@@ -70,6 +83,29 @@ class Stats:
         except Exception as exc:  # noqa: BLE001 — stats must never break a call
             log.warning("stats error record failed: %s", exc)
 
+    async def record_signin(self, step: str) -> None:
+        """Best-effort: count one step of the MCP OAuth sign-in (see SIGNIN_STEPS)."""
+        try:
+            day = time.strftime("%Y-%m-%d", time.gmtime())
+            pipe = self._redis.pipeline()
+            pipe.hincrby("oauth:funnel", step, 1)
+            pipe.hincrby(f"oauth:funnel:day:{day}", step, 1)
+            pipe.expire(f"oauth:funnel:day:{day}", _ERROR_DAYS_KEPT)
+            await pipe.execute()
+        except Exception as exc:  # noqa: BLE001 — stats must never break a sign-in
+            log.warning("stats sign-in record failed: %s", exc)
+
+    async def _signin_last(self, days: int) -> dict:
+        now = time.time()
+        pipe = self._redis.pipeline()
+        for i in range(days):
+            pipe.hgetall(f"oauth:funnel:day:{time.strftime('%Y-%m-%d', time.gmtime(now - i * 86400))}")
+        out: dict = {}
+        for day in await pipe.execute():
+            for step, n in (day or {}).items():
+                out[step] = out.get(step, 0) + int(n)
+        return out
+
     async def snapshot(self) -> dict:
         """Aggregate view (no per-user identities)."""
         try:
@@ -83,8 +119,10 @@ class Stats:
             pipe.hgetall("mcp:errors")
             pipe.hgetall("mcp:errors:daily")
             pipe.lrange("mcp:errors:recent", 0, 49)
+            pipe.hgetall("oauth:funnel")
             (total, tools, daily, callers, clients, recent,
-             errors, errors_daily, errors_recent) = await pipe.execute()
+             errors, errors_daily, errors_recent, signin) = await pipe.execute()
+            signin_30 = await self._signin_last(30)
         except Exception as exc:  # noqa: BLE001
             log.warning("stats snapshot failed: %s", exc)
             return {"error": "stats unavailable"}
@@ -100,6 +138,11 @@ class Stats:
                 "by_code": {k: int(v) for k, v in (errors or {}).items()},
                 "daily": {k: int(v) for k, v in (errors_daily or {}).items()},
                 "recent": [json.loads(x) for x in (errors_recent or [])],
+            },
+            "signin": {
+                "steps": list(SIGNIN_STEPS),
+                "all_time": {k: int(v) for k, v in (signin or {}).items()},
+                "last_30_days": signin_30,
             },
         }
 

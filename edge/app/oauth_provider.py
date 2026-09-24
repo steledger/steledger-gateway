@@ -36,6 +36,7 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from .auth import issue_jwt
 from .config import settings
 from .github import GitHubOAuth
+from .stats import Stats
 
 MCP_SCOPE = "agent"
 
@@ -51,10 +52,17 @@ class GitHubOAuthProvider(
     def __init__(self) -> None:
         self._github: GitHubOAuth | None = None
         self._redis: redis.Redis | None = None
+        self._stats: Stats | None = None
 
-    def configure(self, github: GitHubOAuth, redis_url: str) -> None:
+    def configure(self, github: GitHubOAuth, redis_url: str, stats: Stats | None = None) -> None:
         self._github = github
         self._redis = redis.from_url(redis_url, decode_responses=True)
+        self._stats = stats
+
+    async def count(self, step: str) -> None:
+        """One step of the sign-in funnel (stats.SIGNIN_STEPS); best-effort."""
+        if self._stats is not None:
+            await self._stats.record_signin(step)
 
     async def aclose(self) -> None:
         if self._redis is not None:
@@ -69,6 +77,7 @@ class GitHubOAuthProvider(
         await self._redis.set(
             f"oauth:client:{client_info.client_id}", client_info.model_dump_json(), ex=_CLIENT_TTL
         )
+        await self.count("client_registered")
 
     # --- authorization: delegate user auth to GitHub ---------------------
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
@@ -88,6 +97,7 @@ class GitHubOAuthProvider(
         )
         # GitHub returns to the shared /auth/github/callback, which routes MCP
         # states back to complete_github().
+        await self.count("authorize_started")
         return self._github.authorize_url(state)
 
     async def owns_state(self, state: str) -> bool:
@@ -98,13 +108,19 @@ class GitHubOAuthProvider(
         redirect URI back to the MCP client carrying our authorization code."""
         raw = await self._redis.getdel(f"oauth:state:{state}")
         if not raw:
+            await self.count("state_expired")
             raise ValueError("invalid or expired state")
         data = json.loads(raw)
-        token = await self._github.exchange_code(code)
-        access = token.get("access_token")
-        if not access:
-            raise ValueError(f"github code exchange failed: {token.get('error', 'unknown')}")
-        gh_id, gh_login, gh_created = await self._github.fetch_user(access)
+        try:
+            token = await self._github.exchange_code(code)
+            access = token.get("access_token")
+            if not access:
+                raise ValueError(f"github code exchange failed: {token.get('error', 'unknown')}")
+            gh_id, gh_login, gh_created = await self._github.fetch_user(access)
+        except Exception:
+            await self.count("github_failed")
+            raise
+        await self.count("github_ok")
         new_code = f"mcp_{secrets.token_hex(16)}"
         ac = AuthorizationCode(
             code=new_code,
@@ -164,6 +180,7 @@ class GitHubOAuthProvider(
             raise ValueError("invalid authorization code")
         stored = json.loads(raw)
         gh_id = int(authorization_code.subject)
+        await self.count("token_issued")
         return await self._issue(
             gh_id, stored.get("login", ""), authorization_code.scopes, client.client_id,
             stored.get("created"),
@@ -209,6 +226,7 @@ class GitHubOAuthProvider(
             raise ValueError("invalid refresh token")
         data = json.loads(raw)
         use_scopes = scopes or data["scopes"]
+        await self.count("token_refreshed")
         return await self._issue(
             data["github_id"], data["login"], use_scopes, client.client_id, data.get("created")
         )
