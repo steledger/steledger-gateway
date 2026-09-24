@@ -35,6 +35,12 @@ def mem_name(github_id: int, content_hash: str) -> str:
     return f"ai:gh:{github_id}:mem:{content_hash}"
 
 
+def owned_by(github_id: int, name: str) -> bool:
+    """True if `name` is in this account's namespace: its identity or a memory."""
+    root = root_name(github_id)
+    return name == root or name.startswith(root + ":mem:")
+
+
 def parse_identity(record: dict[str, Any]) -> dict[str, Any]:
     """Parse the JSON value of an on-chain identity record; {} if not valid JSON."""
     try:

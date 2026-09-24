@@ -8,6 +8,7 @@ them (e.g. a 404 identity lookup during agent-login).
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -51,6 +52,11 @@ class AdapterClient:
     async def write_batch(self, operations: list[dict]) -> dict:
         return await self._request("POST", "/nvs/batch", json={"operations": operations})
 
+    async def transfer(self, names: list[str], toaddress: str, days: int) -> dict:
+        return await self._request(
+            "POST", "/nvs/transfer", json={"names": names, "toaddress": toaddress, "days": days}
+        )
+
     async def read(self, name: str) -> dict:
         return await self._request("GET", f"/nvs/{name}")
 
@@ -60,8 +66,11 @@ class AdapterClient:
     async def filter_names(self, regex: str) -> list[dict]:
         return (await self._request("GET", "/names/filter", params={"regex": regex}))["names"]
 
+    async def address_is_valid(self, address: str) -> bool:
+        return bool((await self._request("GET", f"/addresses/{quote(address, safe='')}/valid"))["isvalid"])
+
     async def address_names(self, address: str) -> dict:
-        return await self._request("GET", f"/addresses/{address}/names")
+        return await self._request("GET", f"/addresses/{quote(address, safe='')}/names")
 
     # crypto
     async def verify(self, address: str, signature: str, message: str) -> bool:
