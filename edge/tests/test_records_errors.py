@@ -99,7 +99,7 @@ async def test_mcp_errors_are_json(monkeypatch):
     with pytest.raises(ToolError) as exc:
         await _call("list_records", {"github_id": 1})
     payload = json.loads(str(exc.value).split(": ", 1)[1])
-    assert payload["error"] == "node_unavailable" and payload["retry_after"] == 300
+    assert payload["error"] == "node_unavailable" and payload["retry_after"] == 60
 
 
 async def test_mcp_list_records_needs_an_id_when_anonymous(monkeypatch):

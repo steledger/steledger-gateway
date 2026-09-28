@@ -31,7 +31,12 @@ class EmercoinRPC:
 
     async def call(self, method: str, *params: Any) -> Any:
         payload = {"jsonrpc": "1.0", "id": "adapter", "method": method, "params": list(params)}
-        resp = await self._client.post(self._url, json=payload)
+        try:
+            resp = await self._client.post(self._url, json=payload)
+        except httpx.TransportError as exc:
+            # The node is down or restarting: say so in words the edge recognises,
+            # instead of letting it surface as an unexplained 500.
+            raise RPCError(None, f"node unreachable: {exc.__class__.__name__}") from exc
         # Emercoin/Bitcoin RPC returns HTTP 500/404 with a JSON-RPC error body for
         # method-level failures, so parse the body before raising on HTTP status.
         try:

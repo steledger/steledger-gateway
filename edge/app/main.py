@@ -29,7 +29,7 @@ from .config import settings
 from .github import GitHubOAuth
 from .oauth_state import OAuthStateStore
 from .ratelimit import RateLimiter
-from .errors import INTERNAL_ERROR, from_adapter
+from .errors import INTERNAL_ERROR, AgentError, from_adapter
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -597,7 +597,25 @@ async def address_names(address: str, adapter: AdapterClient = Depends(get_adapt
 @app.get("/nvs/{name:path}")
 async def read_nvs(name: str, adapter: AdapterClient = Depends(get_adapter)) -> dict:
     """Read an NVS record (confirmed from the name DB, or `pending` from mempool)."""
-    return await adapter.read(name)
+    try:
+        return await adapter.read(name)
+    except AdapterError as exc:
+        # A GET on one of the write routes lands here as a read of a name like
+        # "mem"; if no such name exists, say what was meant instead of "not found".
+        if exc.status_code == 404 and name in _POST_ONLY:
+            err = AgentError(
+                405, "method_not_allowed",
+                f"/nvs/{name} is written to, not read: it takes POST.",
+                "Send POST with a JSON body (see the OpenAPI spec). To read a record, "
+                "GET /nvs/<full record name>, e.g. /nvs/ai:gh:<github_id>.",
+            )
+            err.headers = {"Allow": "POST"}
+            raise err
+        raise
+
+
+# Write routes a GET might be aimed at by mistake (see read_nvs).
+_POST_ONLY = frozenset({"identity", "mem", "mem/batch", "transfer"})
 
 
 # Remote MCP server (Streamable HTTP) for agents that speak MCP. Mounted LAST and at

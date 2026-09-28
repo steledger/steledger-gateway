@@ -103,3 +103,44 @@ def test_stray_paths_are_not_counted(rest):
     client, s = rest
     assert client.get("/wp-login.php").status_code == 404
     assert s.errors == []
+
+
+@pytest.mark.parametrize("detail", [
+    "node rpc error: Loading block index...",
+    "node rpc error: Verifying blocks...",
+    "nvs write failed: node unreachable: ConnectError",
+])
+def test_a_restarting_node_is_a_retry_not_a_fault(detail):
+    from app.client import AdapterError
+    from app.errors import from_adapter
+    err = from_adapter(AdapterError(502, detail))
+    assert err.status_code == 503 and err.detail["error"] == "node_unavailable"
+    assert err.detail["retry_after"] == 60
+
+
+class ReadAdapter:
+    def __init__(self, existing=()):
+        self.existing = set(existing)
+
+    async def read(self, name):
+        from app.client import AdapterError
+        if name not in self.existing:
+            raise AdapterError(404, f"name not found: {name}")
+        return {"name": name, "status": "confirmed"}
+
+
+def test_get_on_a_write_route_says_use_post(rest):
+    client, s = rest
+    main.app.dependency_overrides[main.get_adapter] = lambda: ReadAdapter()
+    for path in ("/nvs/mem", "/nvs/identity", "/nvs/transfer", "/nvs/mem/batch"):
+        r = client.get(path)
+        assert r.status_code == 405 and r.headers["allow"] == "POST", path
+        assert r.json()["detail"]["error"] == "method_not_allowed"
+    assert client.get("/nvs/ai:gh:1").json()["detail"]["error"] == "not_found"
+    assert ("GET /nvs/{name:path}", "method_not_allowed") in s.errors
+
+
+def test_a_real_name_that_looks_like_a_route_still_reads(rest):
+    client, _ = rest
+    main.app.dependency_overrides[main.get_adapter] = lambda: ReadAdapter({"identity"})
+    assert client.get("/nvs/identity").json()["status"] == "confirmed"
