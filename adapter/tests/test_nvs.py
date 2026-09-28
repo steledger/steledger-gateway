@@ -200,5 +200,22 @@ class PublicReads(unittest.TestCase):
         self.assertEqual(holder_code, 200)
 
 
+class NodeDown(unittest.TestCase):
+    def test_a_refused_connection_is_an_rpc_error_that_says_unreachable(self):
+        import httpx
+        from app.rpc import EmercoinRPC
+
+        async def go():
+            rpc = EmercoinRPC("http://127.0.0.1:9", "u", "p", timeout=2)
+            try:
+                await rpc.call("getinfo")
+            finally:
+                await rpc.aclose()
+
+        with self.assertRaises(RPCError) as cm:
+            run(go())
+        self.assertIn("node unreachable", cm.exception.message)
+
+
 if __name__ == "__main__":
     unittest.main()

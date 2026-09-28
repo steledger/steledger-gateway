@@ -128,6 +128,14 @@ def not_held(name: str, address: str | None) -> AgentError:
     )
 
 
+# A node that is down, or up but still loading its indexes after a restart (RPC
+# code -28, "in warmup"). Temporary by nature: a retry, not a fault.
+_NODE_STARTING = (
+    "unreachable", "loading block index", "verifying blocks", "loading wallet",
+    "rewinding blocks", "activating best chain", "warmup", "warming up",
+)
+
+
 def from_adapter(exc: AdapterError) -> AgentError:
     """Translate an adapter failure into something an agent can act on."""
     text = str(exc.detail)
@@ -143,10 +151,11 @@ def from_adapter(exc: AdapterError) -> AgentError:
             "Check the name, hash included. list_records shows every record under "
             "a GitHub id; a write reads back as `pending` as soon as it is sent.",
         )
-    if "unreachable" in lowered:
+    if any(n in lowered for n in _NODE_STARTING):
         return AgentError(
-            503, "node_unavailable", "The chain node behind this service is not answering.",
-            "Retry in a few minutes; node_status shows when it is back.", 300,
+            503, "node_unavailable",
+            "The chain node behind this service is restarting or not answering.",
+            "Retry in a minute or two; node_status shows when it is back.", 60,
         )
     return AgentError(
         502, "node_error", f"The chain node refused the operation: {text}",

@@ -117,7 +117,8 @@ the JSON text of the tool error over MCP:
 `error` is a stable code: `authentication_required`, `account_too_new`,
 `rate_limited`, `daily_limit`, `service_capacity`, `invalid_hash`,
 `record_pending`, `value_too_large`, `not_found`, `not_held`, `service_funds`,
-`busy`, `node_unavailable`, `internal_error` (a bug on our side, logged), or
+`busy`, `node_unavailable` (the node is restarting — retry), `method_not_allowed`
+(a GET on a route that takes POST), `internal_error` (a bug on our side, logged), or
 `node_error` (the node's own message, passed through). Transfer adds
 `confirmation_required`, `invalid_selection`, `not_your_record`,
 `too_many_names`, `invalid_address`, `not_active` and `nothing_to_transfer`.
