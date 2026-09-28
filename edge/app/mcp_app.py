@@ -89,6 +89,15 @@ _AUTH_REQUIRED = {
         "(the server advertises the flow at /.well-known/oauth-protected-resource). "
         "Once the session carries a Bearer token, retry this call."
     ),
+    # For an agent whose client cannot run the OAuth redirect: the device flow needs
+    # a person only to type a code once, and the token it yields works here too.
+    "without_oauth": (
+        f"No OAuth in your client? Get a token by GitHub device flow over HTTP: POST "
+        f"{settings.public_url.rstrip('/')}/auth/github/device/start, show your user the "
+        "code once, poll /auth/github/device/poll, then send the token as "
+        "`Authorization: Bearer <token>` — to /mcp or to the REST API. Steps: "
+        f"{settings.public_url.rstrip('/')}/docs/quickstart.md"
+    ),
     "open_without_auth": ["node_status", "read_record", "list_records", "whoami"],
     # Derived, not hard-coded: this URL is handed to agents, and a second copy of
     # the hostname is a second thing to forget when the host moves.
