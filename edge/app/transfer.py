@@ -177,6 +177,7 @@ async def _send_grant(
     except AdapterError as exc:
         log.error("fee grant not sent (github_id=%s, address=%s): %s", github_id, address, exc)
         await grants.release(github_id, token)
+        await grants.failed()
         return {"amount": str(amount), "txid": None}
     await grants.settle(github_id, address, res["txid"])
     log.info("fee grant sent (github_id=%s, address=%s, txid=%s)", github_id, address, res["txid"])

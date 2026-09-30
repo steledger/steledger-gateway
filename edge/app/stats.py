@@ -121,8 +121,11 @@ class Stats:
             pipe.lrange("mcp:errors:recent", 0, 49)
             pipe.hgetall("oauth:funnel")
             pipe.hgetall("feedback:daily")
-            (total, tools, daily, callers, clients, recent,
-             errors, errors_daily, errors_recent, signin, feedback) = await pipe.execute()
+            pipe.hgetall("grant:daily")
+            pipe.hgetall("grant:emc:daily")
+            pipe.hgetall("grant:failed:daily")
+            (total, tools, daily, callers, clients, recent, errors, errors_daily,
+             errors_recent, signin, feedback, grants, grants_emc, grants_failed) = await pipe.execute()
             signin_30 = await self._signin_last(30)
         except Exception as exc:  # noqa: BLE001
             log.warning("stats snapshot failed: %s", exc)
@@ -145,6 +148,14 @@ class Stats:
             "feedback": {
                 "total": sum(int(v) for v in (feedback or {}).values()),
                 "daily": {k: int(v) for k, v in (feedback or {}).items()},
+            },
+            # Network-fee funds sent with transfers (grant.py): counts and EMC
+            # only, no accounts or addresses — those are on-chain for anyone to see.
+            "fee_grants": {
+                "total": sum(int(v) for v in (grants or {}).values()),
+                "emc_total": round(sum(float(v) for v in (grants_emc or {}).values()), 8),
+                "failed": sum(int(v) for v in (grants_failed or {}).values()),
+                "daily": {k: int(v) for k, v in (grants or {}).items()},
             },
             "signin": {
                 "steps": list(SIGNIN_STEPS),

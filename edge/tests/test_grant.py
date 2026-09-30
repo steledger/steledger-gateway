@@ -47,6 +47,18 @@ async def test_once_per_account_for_good(grants):
 
 
 @needs_redis
+async def test_paid_grants_are_counted_per_day(grants):
+    await grants.reserve(1)
+    await grants.settle(1, "em1qx", "tx")
+    await grants.failed()
+    r = redis.from_url(URL, decode_responses=True)
+    assert list((await r.hgetall("grant:daily")).values()) == ["1"]
+    assert float(list((await r.hgetall("grant:emc:daily")).values())[0]) == 0.01
+    assert list((await r.hgetall("grant:failed:daily")).values()) == ["1"]
+    await r.aclose()
+
+
+@needs_redis
 async def test_a_second_reserve_before_settling_is_refused(grants):
     await grants.reserve(1)
     assert await refused(grants, 1) == "fee_grant_used"
