@@ -72,7 +72,10 @@
     <div class="nums">
       <div class="num"><b id="errtotal">–</b><span>refusals and errors</span></div>
       <div class="num"><b id="errinternal">–</b><span>internal errors</span></div>
+      <div class="num"><b id="fbtotal">–</b><span>messages from agents</span></div>
     </div>
+    <p class="muted">Agents can tell us what went wrong through <code>send_feedback</code>.
+      Only the count is shown here; a person reads the messages.</p>
     <h2>By tool and code</h2><div id="errcodes"></div>
     <h2>Refusals per day, last 30 days</h2><div class="chart" id="errdaily"></div>
     <h2>Recent</h2><div class="recent" id="errrecent"></div>
@@ -178,6 +181,7 @@
         `<div>${when(e.ts)} · <b>${esc(e.tool)}</b> <span class="muted" title="${esc(e.client)}">${esc(shortUA(e.client))}</span></div>`
       ).join('') : '<span class="muted">no calls yet</span>';
       funnel($('signin'), d.signin);
+      $('fbtotal').textContent = (d.feedback || {}).total ?? 0;
       const x = d.errors || {};
       const codes = x.by_code || {};
       $('errtotal').textContent = x.total ?? 0;

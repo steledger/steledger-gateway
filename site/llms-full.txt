@@ -295,7 +295,11 @@ the JSON text of the tool error over MCP:
 `node_error` (the node's own message, passed through). Transfer adds
 `confirmation_required`, `invalid_selection`, `not_your_record`,
 `too_many_names`, `invalid_address`, `not_active` and `nothing_to_transfer`.
-`retry_after` is in seconds and appears only when waiting helps. Refusals are
+`retry_after` is in seconds and appears only when waiting helps. Every refusal
+also carries `feedback`: if it looks like our fault, or you are stuck, say so with
+`send_feedback` over MCP or `POST /feedback` (`{"message": "...", "error_code":
+"...", "tool": "..."}`, up to 1000 characters, no sign-in, a few per day). A
+person reads these; there is no automatic reply. Refusals are
 counted by code — never by caller — at https://api.steledger.com/stats.
 
 ## Rate limits / tiers
@@ -384,6 +388,7 @@ Prefer to run it yourself? Use the local stdio server below.
 | `node_status` | open | node sync/height (`GET /status`) |
 | `read_record` | open | read any NVS record |
 | `list_records` | open | list every record under a GitHub id, newest first — how a new session finds what it anchored before |
+| `send_feedback` | open | tell the operator what went wrong or is unclear — up to 1000 characters; a person reads it, no automatic reply |
 | `whoami` | open | current session identity (`{authenticated: false}` with a sign-in hint until you're signed in) |
 | `register_identity` | sign-in required | register the `ai:gh:<id>` identity record |
 | `store_memory` | sign-in required | write one memory record (`ai:gh:<id>:mem:<hash>`); writing the same hash again renews it |

@@ -120,8 +120,9 @@ class Stats:
             pipe.hgetall("mcp:errors:daily")
             pipe.lrange("mcp:errors:recent", 0, 49)
             pipe.hgetall("oauth:funnel")
+            pipe.hgetall("feedback:daily")
             (total, tools, daily, callers, clients, recent,
-             errors, errors_daily, errors_recent, signin) = await pipe.execute()
+             errors, errors_daily, errors_recent, signin, feedback) = await pipe.execute()
             signin_30 = await self._signin_last(30)
         except Exception as exc:  # noqa: BLE001
             log.warning("stats snapshot failed: %s", exc)
@@ -138,6 +139,12 @@ class Stats:
                 "by_code": {k: int(v) for k, v in (errors or {}).items()},
                 "daily": {k: int(v) for k, v in (errors_daily or {}).items()},
                 "recent": [json.loads(x) for x in (errors_recent or [])],
+            },
+            # How many messages agents sent through send_feedback — the count only;
+            # the messages themselves are read by a person, never published.
+            "feedback": {
+                "total": sum(int(v) for v in (feedback or {}).values()),
+                "daily": {k: int(v) for k, v in (feedback or {}).items()},
             },
             "signin": {
                 "steps": list(SIGNIN_STEPS),

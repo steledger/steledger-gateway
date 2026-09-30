@@ -30,6 +30,7 @@ from .github import GitHubOAuth
 from .oauth_state import OAuthStateStore
 from .ratelimit import RateLimiter
 from .errors import INTERNAL_ERROR, AgentError, from_adapter
+from .feedback import MAX_CHARS, Inbox
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -51,11 +52,13 @@ async def lifespan(app: FastAPI):
     )
     app.state.oauth = OAuthStateStore(settings.redis_url)
     app.state.stats = Stats(settings.redis_url)
+    app.state.inbox = Inbox(settings.redis_url)
     app.state.records = RecordLister(app.state.adapter, settings.redis_url)
     # Remote MCP (/mcp) reuses the same adapter + rate limiter + stats; its session
     # manager must run for the streamable-http transport to work.
     mcp_configure(
-        app.state.adapter, app.state.ratelimiter, app.state.stats, app.state.github, app.state.records
+        app.state.adapter, app.state.ratelimiter, app.state.stats, app.state.github, app.state.records,
+        app.state.inbox,
     )
     async with mcp_server.session_manager.run():
         yield
@@ -65,6 +68,7 @@ async def lifespan(app: FastAPI):
     await app.state.github.aclose()
     await app.state.oauth.aclose()
     await app.state.stats.aclose()
+    await app.state.inbox.aclose()
     await app.state.records.aclose()
     await mcp_oauth.aclose()
 
@@ -220,6 +224,12 @@ class TransferRequest(BaseModel):
     irreversible: bool = Field(..., description="must be true: the gateway can never change, renew or return them")
     names: list[str] | None = Field(default=None, max_length=100, description="your own records to move")
     everything: bool = Field(default=False, description="move your identity and every live memory instead")
+
+
+class FeedbackRequest(BaseModel):
+    message: str = Field(..., max_length=MAX_CHARS, description="what you tried, what came back, what you expected")
+    error_code: str | None = Field(default=None, description="the `error` code this is about, if any")
+    tool: str | None = Field(default=None, description="the tool or route this is about, if any")
 
 
 class WriteResponse(BaseModel):
@@ -556,6 +566,22 @@ async def create_mem_batch(
     ]
     res = await adapter.write_batch(ops)
     return BatchWriteResponse(txid=res["txid"], count=res["count"], names=res["names"], quota=quota)
+
+
+@app.post("/feedback")
+async def feedback(req: FeedbackRequest, request: Request) -> dict:
+    """Tell the operator something went wrong or is unclear — up to 1000 characters,
+    no sign-in needed. A person reads these; there is no automatic reply."""
+    principal = None
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        from .auth import decode_token
+        principal = decode_token(auth[7:].strip())
+    ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "")
+    return await request.app.state.inbox.submit(
+        req.message, req.error_code, req.tool, request.headers.get("user-agent", ""),
+        principal.github_id if principal else None, ip,
+    )
 
 
 @app.post("/nvs/transfer")
