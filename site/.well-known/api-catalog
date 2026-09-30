@@ -1,0 +1,35 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://api.steledger.com/",
+      "service-desc": [
+        {
+          "href": "https://api.steledger.com/openapi.json",
+          "type": "application/json"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://api.steledger.com/docs/quickstart.md",
+          "type": "text/markdown"
+        },
+        {
+          "href": "https://api.steledger.com/docs/mcp.md",
+          "type": "text/markdown"
+        }
+      ],
+      "describedby": [
+        {
+          "href": "https://api.steledger.com/llms.txt",
+          "type": "text/plain"
+        }
+      ],
+      "status": [
+        {
+          "href": "https://api.steledger.com/status",
+          "type": "application/json"
+        }
+      ]
+    }
+  ]
+}

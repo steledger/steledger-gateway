@@ -37,6 +37,9 @@
 (app) {
 	encode gzip
 	root * /srv/site
+	# RFC 9727 API catalog and /auth.md are copies of what steledger-site's
+	# tools/build.py generates (same content, both hosts); re-copy after changing it.
+	header /.well-known/api-catalog Content-Type "application/linkset+json"
 	@static file {
 		try_files {path} {path}.html {path}/index.html
 	}
