@@ -81,6 +81,25 @@ steledger.com {
 	# RFC 8288 Link headers on the homepage, so an agent finds the machine-readable
 	# resources from the response itself, without parsing HTML. Targets must exist:
 	# a Link to a 404 is worse than none.
+	# The MCP server card lives with the server (api.steledger.com); point there
+	# instead of keeping a copy that would drift from the regenerated original.
+	redir /.well-known/mcp/server-card.json https://api.steledger.com/.well-known/mcp/server-card.json 302
+	# Markdown negotiation: an agent sending Accept: text/markdown gets the page's
+	# Markdown twin — every page has one (tools/check.py). Browsers never ask for it.
+	@md_html {
+		header Accept *text/markdown*
+		path_regexp mdhtml ^(.+)\.html$
+	}
+	rewrite @md_html {re.mdhtml.1}.md
+	@md_bare {
+		header Accept *text/markdown*
+		not path *.md *.html *.xml *.txt *.json *.svg *.png *.ico /assets/* /.well-known/*
+		file {
+			try_files {path}.md {path}index.md
+		}
+	}
+	rewrite @md_bare {http.matchers.file.relative}
+	header @pages Vary Accept
 	@home path / /index.html
 	header @home Link `</.well-known/api-catalog>; rel="api-catalog", <https://api.steledger.com/openapi.json>; rel="service-desc"; type="application/json", <https://api.steledger.com/docs/quickstart.md>; rel="service-doc"; type="text/markdown", </index.md>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"; type="text/plain"`
 
@@ -112,6 +131,25 @@ http://steledger.com {
 	# RFC 8288 Link headers on the homepage, so an agent finds the machine-readable
 	# resources from the response itself, without parsing HTML. Targets must exist:
 	# a Link to a 404 is worse than none.
+	# The MCP server card lives with the server (api.steledger.com); point there
+	# instead of keeping a copy that would drift from the regenerated original.
+	redir /.well-known/mcp/server-card.json https://api.steledger.com/.well-known/mcp/server-card.json 302
+	# Markdown negotiation: an agent sending Accept: text/markdown gets the page's
+	# Markdown twin — every page has one (tools/check.py). Browsers never ask for it.
+	@md_html {
+		header Accept *text/markdown*
+		path_regexp mdhtml ^(.+)\.html$
+	}
+	rewrite @md_html {re.mdhtml.1}.md
+	@md_bare {
+		header Accept *text/markdown*
+		not path *.md *.html *.xml *.txt *.json *.svg *.png *.ico /assets/* /.well-known/*
+		file {
+			try_files {path}.md {path}index.md
+		}
+	}
+	rewrite @md_bare {http.matchers.file.relative}
+	header @pages Vary Accept
 	@home path / /index.html
 	header @home Link `</.well-known/api-catalog>; rel="api-catalog", <https://api.steledger.com/openapi.json>; rel="service-desc"; type="application/json", <https://api.steledger.com/docs/quickstart.md>; rel="service-doc"; type="text/markdown", </index.md>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"; type="text/plain"`
 
