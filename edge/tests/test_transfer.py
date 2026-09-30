@@ -62,6 +62,9 @@ class FakeGrants:
     async def settle(self, github_id, address, txid):
         self.log.append(("settle", github_id, address, txid))
 
+    async def failed(self):
+        self.log.append(("failed",))
+
 
 class FakeLimiter:
     def __init__(self):
@@ -194,7 +197,7 @@ class FeeGrant(unittest.TestCase):
         result, _, _ = granted(adapter, grants)
         self.assertEqual(result["txid"], "tx")
         self.assertEqual(result["fee_grant"], {"amount": "0.01", "txid": None})
-        self.assertEqual(grants.log, [("reserve", 7), ("release", 7)])
+        self.assertEqual(grants.log, [("reserve", 7), ("release", 7), ("failed",)])
         self.assertIn("could not be sent", result["after"])
 
 

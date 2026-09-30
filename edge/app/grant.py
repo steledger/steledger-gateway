@@ -100,10 +100,21 @@ class FeeGrants:
         await self._redis.zrem(GLOBAL_KEY, token)
 
     async def settle(self, github_id: int, address: str, txid: str) -> None:
-        """Mark the account's grant as paid. Kept for good: it is given once."""
-        await self._redis.set(_account_key(github_id), json.dumps(
-            {"address": address, "txid": txid, "amount": str(settings.fee_grant_emc), "at": int(time.time())}
+        """Mark the account's grant as paid. Kept for good: it is given once.
+        Also counted per UTC day for /stats and the daily digest."""
+        now = time.time()
+        day = time.strftime("%Y-%m-%d", time.gmtime(now))
+        pipe = self._redis.pipeline()
+        pipe.set(_account_key(github_id), json.dumps(
+            {"address": address, "txid": txid, "amount": str(settings.fee_grant_emc), "at": int(now)}
         ))
+        pipe.hincrby("grant:daily", day, 1)
+        pipe.hincrbyfloat("grant:emc:daily", day, float(settings.fee_grant_emc))
+        await pipe.execute()
+
+    async def failed(self) -> None:
+        """Count a grant that could not be paid after its transfer went out."""
+        await self._redis.hincrby("grant:failed:daily", time.strftime("%Y-%m-%d", time.gmtime()), 1)
 
     async def aclose(self) -> None:
         await self._redis.aclose()
