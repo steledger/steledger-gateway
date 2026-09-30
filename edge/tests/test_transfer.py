@@ -33,8 +33,34 @@ class FakeAdapter:
         return address == ADDR
 
     async def transfer(self, names, toaddress, days):
+        if getattr(self, "transfer_fails", False):
+            raise AdapterError(502, "transfer failed: node unreachable")
         self.calls.append((names, toaddress, days))
         return {"txid": "tx", "count": len(names), "names": names, "toaddress": toaddress}
+
+    async def send(self, address, amount, comment):
+        if getattr(self, "send_fails", False):
+            raise AdapterError(400, "Insufficient funds")
+        self.calls.append(("send", address, amount))
+        return {"txid": "granttx", "address": address, "amount": amount}
+
+
+class FakeGrants:
+    def __init__(self, refuse=None):
+        self.refuse = refuse
+        self.log = []
+
+    async def reserve(self, github_id):
+        if self.refuse:
+            raise AgentError(409, self.refuse, "refused", "hint")
+        self.log.append(("reserve", github_id))
+        return "tok"
+
+    async def release(self, github_id, token):
+        self.log.append(("release", github_id))
+
+    async def settle(self, github_id, address, txid):
+        self.log.append(("settle", github_id, address, txid))
 
 
 class FakeLimiter:
@@ -127,6 +153,51 @@ class Policy(unittest.TestCase):
         self.refused("nothing_to_transfer", everything=True, listed=[{"name": "ai:gh:7", "expired": True}])
 
 
+def granted(adapter=None, grants=None, limiter=None):
+    adapter, limiter, grants = adapter or FakeAdapter(), limiter or FakeLimiter(), grants or FakeGrants()
+    result = asyncio.run(transfer.transfer(
+        ME, ADDR, ["ai:gh:7"], False, True, adapter, limiter, FakeRecords([]), True, grants
+    ))
+    return result, adapter, grants
+
+
+class FeeGrant(unittest.TestCase):
+    def test_not_asked_nothing_sent(self):
+        result, adapter, _ = call(names=["ai:gh:7"])
+        self.assertIsNone(result["fee_grant"])
+        self.assertNotIn("send", [c[0] for c in adapter.calls])
+
+    def test_sent_to_the_destination_after_the_transfer(self):
+        result, adapter, grants = granted()
+        self.assertEqual(adapter.calls, [(["ai:gh:7"], ADDR, 36500), ("send", ADDR, 0.01)])
+        self.assertEqual(result["fee_grant"], {"amount": "0.01", "txid": "granttx"})
+        self.assertEqual(grants.log, [("reserve", 7), ("settle", 7, ADDR, "granttx")])
+        self.assertIn("network fees", result["after"])
+
+    def test_refused_grant_moves_nothing_and_spends_no_quota(self):
+        adapter, limiter = FakeAdapter(), FakeLimiter()
+        with self.assertRaises(AgentError) as cm:
+            granted(adapter, FakeGrants(refuse="fee_grant_used"), limiter)
+        self.assertEqual(cm.exception.detail["error"], "fee_grant_used")
+        self.assertEqual((limiter.admitted, adapter.calls), ([], []))
+
+    def test_failed_transfer_gives_the_grant_back(self):
+        adapter, grants = FakeAdapter(), FakeGrants()
+        adapter.transfer_fails = True
+        with self.assertRaises(AdapterError):
+            granted(adapter, grants)
+        self.assertEqual(grants.log, [("reserve", 7), ("release", 7)])
+
+    def test_failed_payment_keeps_the_transfer_and_gives_the_grant_back(self):
+        adapter, grants = FakeAdapter(), FakeGrants()
+        adapter.send_fails = True
+        result, _, _ = granted(adapter, grants)
+        self.assertEqual(result["txid"], "tx")
+        self.assertEqual(result["fee_grant"], {"amount": "0.01", "txid": None})
+        self.assertEqual(grants.log, [("reserve", 7), ("release", 7)])
+        self.assertIn("could not be sent", result["after"])
+
+
 class Registered(unittest.TestCase):
     def test_tool_is_listed_as_destructive_with_required_confirmation(self):
         from app.mcp_app import mcp
@@ -136,6 +207,8 @@ class Registered(unittest.TestCase):
         self.assertTrue(tool.annotations.destructiveHint)
         self.assertEqual(set(tool.inputSchema["required"]), {"to_address", "irreversible"})
         self.assertIn("after", tool.outputSchema["properties"])
+        self.assertIn("fee_grant", tool.outputSchema["properties"])
+        self.assertIn("fee_grant", tool.inputSchema["properties"])
         self.assertFalse(tool.description.startswith(" "))
 
 

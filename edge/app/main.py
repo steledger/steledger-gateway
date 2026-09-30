@@ -31,6 +31,7 @@ from .oauth_state import OAuthStateStore
 from .ratelimit import RateLimiter
 from .errors import INTERNAL_ERROR, AgentError, from_adapter
 from .feedback import MAX_CHARS, Inbox
+from .grant import FeeGrants
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -53,12 +54,13 @@ async def lifespan(app: FastAPI):
     app.state.oauth = OAuthStateStore(settings.redis_url)
     app.state.stats = Stats(settings.redis_url)
     app.state.inbox = Inbox(settings.redis_url)
+    app.state.grants = FeeGrants(settings.redis_url)
     app.state.records = RecordLister(app.state.adapter, settings.redis_url)
     # Remote MCP (/mcp) reuses the same adapter + rate limiter + stats; its session
     # manager must run for the streamable-http transport to work.
     mcp_configure(
         app.state.adapter, app.state.ratelimiter, app.state.stats, app.state.github, app.state.records,
-        app.state.inbox,
+        app.state.inbox, app.state.grants,
     )
     async with mcp_server.session_manager.run():
         yield
@@ -69,6 +71,7 @@ async def lifespan(app: FastAPI):
     await app.state.oauth.aclose()
     await app.state.stats.aclose()
     await app.state.inbox.aclose()
+    await app.state.grants.aclose()
     await app.state.records.aclose()
     await mcp_oauth.aclose()
 
@@ -224,6 +227,10 @@ class TransferRequest(BaseModel):
     irreversible: bool = Field(..., description="must be true: the gateway can never change, renew or return them")
     names: list[str] | None = Field(default=None, max_length=100, description="your own records to move")
     everything: bool = Field(default=False, description="move your identity and every live memory instead")
+    fee_grant: bool = Field(
+        default=False,
+        description="also send 0.01 EMC for network fees to to_address; once per account, refused up front if unavailable",
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -596,7 +603,7 @@ async def transfer_records(
     Irreversible — see the `transfer_records` MCP tool for what it means."""
     return await transfer.transfer(
         principal, req.to_address, req.names, req.everything, req.irreversible,
-        adapter, rl, request.app.state.records,
+        adapter, rl, request.app.state.records, req.fee_grant, request.app.state.grants,
     )
 
 

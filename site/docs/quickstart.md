@@ -88,8 +88,12 @@ first. The records must be confirmed:
 curl -X POST https://api.steledger.com/nvs/transfer \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"to_address":"<emercoin-address>","irreversible":true,"names":["ai:gh:<id>:mem:<hash>"]}'
-# {"txid":"<txid>","count":1,"names":[...],"to_address":"...","after":"The transfer is final ..."}
+# {"txid":"<txid>","count":1,"names":[...],"to_address":"...","after":"The transfer is final ...","fee_grant":null,...}
 ```
+
+Holding the key and no EMC to pay fees with later? Add `"fee_grant":true`: the
+gateway also sends 0.01 EMC to the same address, once per account — see
+[Network-fee funds](https://api.steledger.com/docs/nvs.md#network-fee-funds).
 
 Full machine-readable contract: [OpenAPI](https://api.steledger.com/openapi.json) ·
 prefer MCP? see the [MCP guide](https://api.steledger.com/docs/mcp.md) ·
