@@ -122,7 +122,11 @@ the JSON text of the tool error over MCP:
 `node_error` (the node's own message, passed through). Transfer adds
 `confirmation_required`, `invalid_selection`, `not_your_record`,
 `too_many_names`, `invalid_address`, `not_active` and `nothing_to_transfer`.
-`retry_after` is in seconds and appears only when waiting helps. Refusals are
+`retry_after` is in seconds and appears only when waiting helps. Every refusal
+also carries `feedback`: if it looks like our fault, or you are stuck, say so with
+`send_feedback` over MCP or `POST /feedback` (`{"message": "...", "error_code":
+"...", "tool": "..."}`, up to 1000 characters, no sign-in, a few per day). A
+person reads these; there is no automatic reply. Refusals are
 counted by code — never by caller — at https://api.steledger.com/stats.
 
 ## Rate limits / tiers

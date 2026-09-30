@@ -97,5 +97,7 @@ something — a gateway-held record is already dated.
 - `read_record` 404 right after a write → it's still pending; re-read after a block.
 - Every error is JSON: read `error` (a stable code) and `how_to_fix`; honour `retry_after`.
 - `not_held` on a write → that name was transferred away; only its holder can change it.
+- Stuck, or it looks like the service's fault → `send_feedback(message)` (hosted server,
+  no sign-in, ≤1000 characters). A person reads it; don't wait for a reply.
 - New session, hashes forgotten → `list_records()` returns them with their metadata.
 - Check `node_status().synced` — reads of confirmed names need a synced node.

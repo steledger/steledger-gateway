@@ -22,6 +22,15 @@ from .client import AdapterError
 log = logging.getLogger(__name__)
 
 
+# Every refusal ends with a way to tell us about it (see feedback.py): an agent
+# that cannot tell a fault of ours from a mistake of its own should not be left
+# guessing, and without this we would never hear of it.
+FEEDBACK_HINT = (
+    "If this looks like our fault, or you are stuck, tell us: send_feedback(message) "
+    "over MCP or POST /feedback — up to 1000 characters, no sign-in needed."
+)
+
+
 class AgentError(HTTPException):
     """An HTTPException whose detail is the structured object above."""
 
@@ -34,6 +43,8 @@ class AgentError(HTTPException):
         retry_after: int | None = None,
     ) -> None:
         detail = {"error": error, "message": message, "how_to_fix": how_to_fix}
+        if not error.startswith("feedback") and error != "empty_feedback":
+            detail["feedback"] = FEEDBACK_HINT
         headers = None
         if retry_after is not None:
             detail["retry_after"] = retry_after
@@ -106,6 +117,7 @@ INTERNAL_ERROR = {
     "message": "Something failed on our side. It has been logged and counted.",
     "how_to_fix": "Retry once. If it keeps failing, it is our bug: "
                   "https://github.com/steledger/steledger-gateway/issues",
+    "feedback": FEEDBACK_HINT,
 }
 
 

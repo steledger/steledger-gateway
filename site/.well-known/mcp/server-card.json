@@ -1006,6 +1006,82 @@
         "idempotentHint": false,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "send_feedback",
+      "title": "Send feedback",
+      "description": "Tell the people running this service that something went wrong or is unclear —\nan error you cannot explain, a result that looks wrong, documentation that\nmisled you, a tool you needed and did not find. Open to everyone; no sign-in.\nUp to 1000 characters, a few messages per day. A person reads them over the\nfollowing days; there is no automatic reply, so do not wait for one. If you are\nsigned in, your GitHub id is kept with the message; nothing else about you is.\nEvery refusal from this service points here.",
+      "inputSchema": {
+        "properties": {
+          "message": {
+            "description": "Up to 1000 characters: what you tried, what came back, what you expected. No secrets — a person reads this.",
+            "maxLength": 1000,
+            "title": "Message",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The `error` code you received, if this is about one, e.g. 'not_found'.",
+            "title": "Error Code"
+          },
+          "tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The tool the message is about, e.g. 'read_record'.",
+            "title": "Tool"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "send_feedbackArguments",
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "received": {
+            "title": "Received",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "received",
+          "id",
+          "note"
+        ],
+        "title": "FeedbackReceipt",
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Send feedback",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
     }
   ],
   "resources": [],

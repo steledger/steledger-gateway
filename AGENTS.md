@@ -82,6 +82,7 @@ Two services, one responsibility each:
 | `store_memory(content_hash, metadata?)` | yes | one memory record |
 | `store_memory_batch(records)` | yes | many records in one atomic transaction |
 | `read_record(name)` | no | read any NVS record (confirmed or pending) |
+| `send_feedback(message, error_code?, tool?)` | no | hosted only: tell the operator what went wrong (≤1000 chars; a person reads it) |
 | `transfer_records(to_address, irreversible, names? \| everything?)` | yes | hosted only: move records to your own address, irreversibly |
 
 ## HTTP API (if not using MCP)

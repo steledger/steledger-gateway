@@ -127,6 +127,10 @@ def daily_digest(day: str) -> str:
     bugs = sum(n for key, n in errors.items() if key.endswith(":internal_error"))
     if bugs:
         lines.append(f"{bugs} of them internal errors — bugs on our side.")
+    feedback = redis_hash("feedback:daily").get(day, 0)
+    if feedback:
+        lines.append(f"Messages from agents (send_feedback): {feedback} — read them over ssh: "
+                     "python3 /opt/emer-ai-tools/deploy/read-feedback.py")
     signin = redis_hash(f"oauth:funnel:day:{day}")
     if signin:
         lines.append(

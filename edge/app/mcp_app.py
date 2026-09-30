@@ -38,7 +38,8 @@ from .github import GitHubOAuth
 from .oauth_provider import MCP_SCOPE, GitHubOAuthProvider
 from .ratelimit import RateLimiter
 from .client import AdapterError
-from .errors import INTERNAL_ERROR, AgentError, code_of, from_adapter
+from .errors import FEEDBACK_HINT, INTERNAL_ERROR, AgentError, code_of, from_adapter
+from .feedback import MAX_CHARS, Inbox
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -48,17 +49,18 @@ _adapter: AdapterClient | None = None
 _ratelimiter: RateLimiter | None = None
 _stats: Stats | None = None
 _records: RecordLister | None = None
+_inbox: Inbox | None = None
 
 oauth_provider = GitHubOAuthProvider()
 
 
 def configure(
     adapter: AdapterClient, ratelimiter: RateLimiter, stats: Stats, github: GitHubOAuth,
-    records: RecordLister,
+    records: RecordLister, inbox: Inbox | None = None,
 ) -> None:
     """Inject the edge's shared clients so tools/provider reuse them (in lifespan)."""
-    global _adapter, _ratelimiter, _stats, _records
-    _adapter, _ratelimiter, _stats, _records = adapter, ratelimiter, stats, records
+    global _adapter, _ratelimiter, _stats, _records, _inbox
+    _adapter, _ratelimiter, _stats, _records, _inbox = adapter, ratelimiter, stats, records, inbox
     oauth_provider.configure(github, settings.redis_url, stats)
 
 
@@ -98,7 +100,8 @@ _AUTH_REQUIRED = {
         "`Authorization: Bearer <token>` — to /mcp or to the REST API. Steps: "
         f"{settings.public_url.rstrip('/')}/docs/quickstart.md"
     ),
-    "open_without_auth": ["node_status", "read_record", "list_records", "whoami"],
+    "open_without_auth": ["node_status", "read_record", "list_records", "whoami", "send_feedback"],
+    "feedback": FEEDBACK_HINT,
     # Derived, not hard-coded: this URL is handed to agents, and a second copy of
     # the hostname is a second thing to forget when the host moves.
     "docs": f"{settings.public_url.rstrip('/')}/docs/mcp.md",
@@ -112,6 +115,15 @@ def _principal() -> Principal:
     if p is None:
         raise ValueError(json.dumps(_AUTH_REQUIRED))
     return p
+
+
+def _client_ip(ctx: Context | None) -> str:
+    """The caller's address as Cloudflare reports it; used only, hashed, to rate-limit feedback."""
+    try:
+        h = ctx.request_context.request.headers  # type: ignore[union-attr]
+        return h.get("cf-connecting-ip") or h.get("x-forwarded-for", "").split(",")[0].strip()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _client(ctx: Context | None) -> str:
@@ -248,7 +260,9 @@ mcp = FastMCP(
         "Give an AI agent a durable identity and a place to anchor what it knows, "
         "as records on a public blockchain that no single vendor owns or can switch "
         "off. Read tools (node_status, read_record, list_records, whoami) are open to everyone — no "
-        "sign-in. Write tools (register_identity, store_memory, store_memory_batch, "
+        "sign-in, and so is send_feedback: when something fails or is unclear, tell the "
+        "operator in up to 1000 characters. Write tools (register_identity, store_memory, "
+        "store_memory_batch, "
         "transfer_records) require a GitHub "
         "sign-in via OAuth, which your MCP client performs, from a GitHub account at "
         "least 30 days old; on the FREE tier writes are limited per minute and per "
@@ -726,6 +740,56 @@ async def transfer_records(
     await _record(ctx, "transfer_records", p)
     return await transfer.transfer(
         p, to_address, names, everything, irreversible, _adapter, _ratelimiter, _records  # type: ignore[arg-type]
+    )
+
+
+class FeedbackReceipt(TypedDict):
+    """Confirmation that the message was stored; nothing answers it automatically."""
+    received: bool
+    id: str
+    note: str
+
+
+@_tool(
+    title="Send feedback",
+    annotations=ToolAnnotations(
+        title="Send feedback",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=False,
+    ),
+    structured_output=True,
+)
+async def send_feedback(
+    ctx: Context,
+    message: Annotated[
+        str,
+        Field(max_length=MAX_CHARS, description=(
+            f"Up to {MAX_CHARS} characters: what you tried, what came back, what you "
+            "expected. No secrets — a person reads this."
+        )),
+    ],
+    error_code: Annotated[
+        str | None,
+        Field(default=None, description="The `error` code you received, if this is about one, e.g. 'not_found'."),
+    ] = None,
+    tool: Annotated[
+        str | None,
+        Field(default=None, description="The tool the message is about, e.g. 'read_record'."),
+    ] = None,
+) -> FeedbackReceipt:
+    """Tell the people running this service that something went wrong or is unclear —
+    an error you cannot explain, a result that looks wrong, documentation that
+    misled you, a tool you needed and did not find. Open to everyone; no sign-in.
+    Up to 1000 characters, a few messages per day. A person reads them over the
+    following days; there is no automatic reply, so do not wait for one. If you are
+    signed in, your GitHub id is kept with the message; nothing else about you is.
+    Every refusal from this service points here."""
+    p = _principal_optional()
+    await _record(ctx, "send_feedback", p)
+    return await _inbox.submit(  # type: ignore[union-attr]
+        message, error_code, tool, _client(ctx), p.github_id if p else None, _client_ip(ctx)
     )
 
 
