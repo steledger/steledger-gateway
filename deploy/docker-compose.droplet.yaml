@@ -86,6 +86,9 @@ services:
       # Service-wide write ceiling per 24 h; the real value lives in .env. Same
       # fallback as the code default, since "" would fail to parse as an int.
       EDGE_GLOBAL_WRITES_PER_DAY: ${EDGE_GLOBAL_WRITES_PER_DAY:-1000}
+      # Network-fee funds sent with a transfer, per 24 h across everyone (edge
+      # grant.py). 0 = off; the real ceiling lives in .env.
+      EDGE_FEE_GRANTS_PER_DAY: ${EDGE_FEE_GRANTS_PER_DAY:-0}
     depends_on: [redis, adapter]
 
   caddy:
