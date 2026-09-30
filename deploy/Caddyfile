@@ -73,6 +73,13 @@ steledger.com {
 	# Caddy's MIME table maps .xml to text/xml; feed readers accept that, but
 	# the feed's own type is Atom. file_server keeps a Content-Type already set.
 	header /feed.xml Content-Type "application/atom+xml; charset=utf-8"
+	# RFC 9727 API catalog, built by the site's tools/build.py; its registered type.
+	header /.well-known/api-catalog Content-Type "application/linkset+json"
+	# RFC 8288 Link headers on the homepage, so an agent finds the machine-readable
+	# resources from the response itself, without parsing HTML. Targets must exist:
+	# a Link to a 404 is worse than none.
+	@home path / /index.html
+	header @home Link `</.well-known/api-catalog>; rel="api-catalog", <https://api.steledger.com/openapi.json>; rel="service-desc"; type="application/json", <https://api.steledger.com/docs/quickstart.md>; rel="service-doc"; type="text/markdown", </index.md>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"; type="text/plain"`
 
 	handle_errors {
 		rewrite * /404.html
@@ -97,6 +104,13 @@ http://steledger.com {
 	# Caddy's MIME table maps .xml to text/xml; feed readers accept that, but
 	# the feed's own type is Atom. file_server keeps a Content-Type already set.
 	header /feed.xml Content-Type "application/atom+xml; charset=utf-8"
+	# RFC 9727 API catalog, built by the site's tools/build.py; its registered type.
+	header /.well-known/api-catalog Content-Type "application/linkset+json"
+	# RFC 8288 Link headers on the homepage, so an agent finds the machine-readable
+	# resources from the response itself, without parsing HTML. Targets must exist:
+	# a Link to a 404 is worse than none.
+	@home path / /index.html
+	header @home Link `</.well-known/api-catalog>; rel="api-catalog", <https://api.steledger.com/openapi.json>; rel="service-desc"; type="application/json", <https://api.steledger.com/docs/quickstart.md>; rel="service-doc"; type="text/markdown", </index.md>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"; type="text/plain"`
 
 	handle_errors {
 		rewrite * /404.html
