@@ -131,6 +131,13 @@ def daily_digest(day: str) -> str:
     if feedback:
         lines.append(f"Messages from agents (send_feedback): {feedback} — read them over ssh: "
                      "python3 /opt/emer-ai-tools/deploy/read-feedback.py")
+    grants = redis_hash("grant:daily").get(day, 0)
+    grants_failed = redis_hash("grant:failed:daily").get(day, 0)
+    if grants or grants_failed:
+        line = f"Network-fee grants sent with transfers: {grants}"
+        if grants_failed:
+            line += f"; {grants_failed} FAILED after the transfer — see docker logs emer-edge"
+        lines.append(line + ".")
     signin = redis_hash(f"oauth:funnel:day:{day}")
     if signin:
         lines.append(
