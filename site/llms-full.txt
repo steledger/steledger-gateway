@@ -162,8 +162,12 @@ first. The records must be confirmed:
 curl -X POST https://api.steledger.com/nvs/transfer \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"to_address":"<emercoin-address>","irreversible":true,"names":["ai:gh:<id>:mem:<hash>"]}'
-# {"txid":"<txid>","count":1,"names":[...],"to_address":"...","after":"The transfer is final ..."}
+# {"txid":"<txid>","count":1,"names":[...],"to_address":"...","after":"The transfer is final ...","fee_grant":null,...}
 ```
+
+Holding the key and no EMC to pay fees with later? Add `"fee_grant":true`: the
+gateway also sends 0.01 EMC to the same address, once per account — see
+[Network-fee funds](https://api.steledger.com/docs/nvs.md#network-fee-funds).
 
 Full machine-readable contract: [OpenAPI](https://api.steledger.com/openapi.json) ·
 prefer MCP? see the [MCP guide](https://api.steledger.com/docs/mcp.md) ·
@@ -247,6 +251,25 @@ After a transfer, `register_identity` or re-storing a moved hash answers
 `not_held`; new memories are held by the gateway again and can be transferred
 later.
 
+### Network-fee funds
+
+Changing or renewing a record you hold is a transaction your own node pays for,
+in EMC: a value update cost 0.0002 EMC when measured (September 2026); extending
+a term costs more, growing with the square root of the days added. If the
+destination has no EMC, add `"fee_grant": true` to the transfer. The gateway then
+sends **0.01 EMC** — about fifty value updates — to the same address, in a
+separate transaction right after the transfer:
+
+- **once per GitHub account**, and only together with a transfer, to the address
+  that receives the names;
+- within a daily budget across all accounts;
+- refused **before anything moves** if it is not available — `fee_grant_used`
+  (this account already had it) or `fee_grant_unavailable` (budget spent, or not
+  offered) — so you can decide to transfer without it.
+
+The result's `fee_grant` holds the amount and the paying transaction's id. Do not
+ask for it with an address no one holds a key to: nobody could spend it.
+
 ## Expiry
 
 Records are written with a default term of **1825 days** (reported as
@@ -294,7 +317,8 @@ the JSON text of the tool error over MCP:
 (a GET on a route that takes POST), `internal_error` (a bug on our side, logged), or
 `node_error` (the node's own message, passed through). Transfer adds
 `confirmation_required`, `invalid_selection`, `not_your_record`,
-`too_many_names`, `invalid_address`, `not_active` and `nothing_to_transfer`.
+`too_many_names`, `invalid_address`, `not_active`, `nothing_to_transfer`,
+`fee_grant_used` and `fee_grant_unavailable`.
 `retry_after` is in seconds and appears only when waiting helps. Every refusal
 also carries `feedback`: if it looks like our fault, or you are stuck, say so with
 `send_feedback` over MCP or `POST /feedback` (`{"message": "...", "error_code":

@@ -40,6 +40,7 @@ from .ratelimit import RateLimiter
 from .client import AdapterError
 from .errors import FEEDBACK_HINT, INTERNAL_ERROR, AgentError, code_of, from_adapter
 from .feedback import MAX_CHARS, Inbox
+from .grant import FeeGrants
 from .records import RecordLister, page
 from .stats import Stats
 
@@ -50,17 +51,19 @@ _ratelimiter: RateLimiter | None = None
 _stats: Stats | None = None
 _records: RecordLister | None = None
 _inbox: Inbox | None = None
+_grants: FeeGrants | None = None
 
 oauth_provider = GitHubOAuthProvider()
 
 
 def configure(
     adapter: AdapterClient, ratelimiter: RateLimiter, stats: Stats, github: GitHubOAuth,
-    records: RecordLister, inbox: Inbox | None = None,
+    records: RecordLister, inbox: Inbox | None = None, grants: FeeGrants | None = None,
 ) -> None:
     """Inject the edge's shared clients so tools/provider reuse them (in lifespan)."""
-    global _adapter, _ratelimiter, _stats, _records, _inbox
+    global _adapter, _ratelimiter, _stats, _records, _inbox, _grants
     _adapter, _ratelimiter, _stats, _records, _inbox = adapter, ratelimiter, stats, records, inbox
+    _grants = grants
     oauth_provider.configure(github, settings.redis_url, stats)
 
 
@@ -238,14 +241,23 @@ class BatchWriteResult(TypedDict):
     quota: Quota
 
 
+class FeeGrantResult(TypedDict):
+    """Network-fee funds sent with a transfer: the amount in EMC, and the id of
+    the transaction that paid it — null if it could not be sent."""
+    amount: str
+    txid: str | None
+
+
 class TransferResult(TypedDict):
     """One transaction for the whole transfer: its id, the names moved, where
-    they went, what that means from now on, and the writes left afterwards."""
+    they went, what that means from now on, the network-fee funds if asked for
+    (else null), and the writes left afterwards."""
     txid: str
     count: int
     names: list[str]
     to_address: str
     after: str
+    fee_grant: FeeGrantResult | None
     quota: Quota
 
 
@@ -715,6 +727,14 @@ async def transfer_records(
             "Use instead of `names`."
         )),
     ] = False,
+    fee_grant: Annotated[
+        bool,
+        Field(default=False, description=(
+            "Also send a small amount of EMC to `to_address` to pay network fees for "
+            "changing these records later from your own node. Once per account; "
+            "refused before anything moves if it is not available."
+        )),
+    ] = False,
 ) -> TransferResult:
     """Hand your records over from the gateway's wallet to an address you choose,
     in one transaction. IRREVERSIBLE: once the block confirms, the gateway can no
@@ -734,12 +754,21 @@ async def transfer_records(
     records) can be moved, and only once they are confirmed. Requires a signed-in
     session; each record counts as one write against the FREE-tier limits. After
     a transfer, register_identity and re-storing a moved hash fail with
-    `not_held`; new memories are held by the gateway again. Returns the
-    transaction id, the names moved, and a plain statement of what changes."""
+    `not_held`; new memories are held by the gateway again.
+
+    Changing a record costs a network fee in EMC. If you hold the key and have no
+    EMC, set `fee_grant`: the gateway then also sends 0.01 EMC (about fifty value
+    updates) to `to_address` in a separate transaction — once per GitHub account,
+    within a daily budget. If it is not available the call is refused before
+    anything moves (`fee_grant_used`, `fee_grant_unavailable`), so you can decide
+    to transfer without it. Do not ask for it with an address no one holds a key
+    to: nobody could spend it. Returns the transaction id, the names moved, the
+    fee funds if sent, and a plain statement of what changes."""
     p = _principal()
     await _record(ctx, "transfer_records", p)
     return await transfer.transfer(
-        p, to_address, names, everything, irreversible, _adapter, _ratelimiter, _records  # type: ignore[arg-type]
+        p, to_address, names, everything, irreversible, _adapter, _ratelimiter, _records,  # type: ignore[arg-type]
+        fee_grant, _grants,
     )
 
 

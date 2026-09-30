@@ -1,6 +1,8 @@
 """Edge settings — the agent-facing IAM layer in front of the node adapter."""
 from __future__ import annotations
 
+from decimal import Decimal
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -62,6 +64,12 @@ class Settings(BaseSettings):
     # the moment of transfer, not before. The fee is square-rooted: a century
     # costs a few thousandths of an EMC.
     transfer_days: int = 36500
+    # Network-fee funds a transfer may ask for (grant.py): the amount, and how
+    # many may go out across everyone per trailing 24 hours. Zero switches them
+    # off; production sets its ceiling in deploy/.env. 0.01 EMC pays for about
+    # fifty value updates (0.0002 each, measured 2026-09-30) or a few renewals.
+    fee_grant_emc: Decimal = Decimal("0.01")
+    fee_grants_per_day: int = 0
 
     @model_validator(mode="after")
     def _require_strong_secret(self) -> "Settings":

@@ -887,7 +887,7 @@
     {
       "name": "transfer_records",
       "title": "Transfer records",
-      "description": "Hand your records over from the gateway's wallet to an address you choose,\nin one transaction. IRREVERSIBLE: once the block confirms, the gateway can no\nlonger change, renew or return them — nor can anyone else but the holder of\n`to_address`. Values are carried over unchanged, and each record gets about a\ncentury added to its term, since the gateway will not be able to renew it.\n\nWhy you might: with an address whose key you hold, the records are really\nyours — you can prove control by signing, and payments sent to your identity\nname reach you rather than the gateway. Changing a record afterwards needs your\nown Emercoin node and its fees. With an address no one holds a key to, the\nrecords are sealed: provably unchangeable by anyone until the term ends. If you\nonly want proof that something existed at a given time, do not transfer — a\nrecord held by the gateway is already dated.\n\nOnly records under your own identity (`ai:gh:<github_id>` and its `:mem:`\nrecords) can be moved, and only once they are confirmed. Requires a signed-in\nsession; each record counts as one write against the FREE-tier limits. After\na transfer, register_identity and re-storing a moved hash fail with\n`not_held`; new memories are held by the gateway again. Returns the\ntransaction id, the names moved, and a plain statement of what changes.",
+      "description": "Hand your records over from the gateway's wallet to an address you choose,\nin one transaction. IRREVERSIBLE: once the block confirms, the gateway can no\nlonger change, renew or return them — nor can anyone else but the holder of\n`to_address`. Values are carried over unchanged, and each record gets about a\ncentury added to its term, since the gateway will not be able to renew it.\n\nWhy you might: with an address whose key you hold, the records are really\nyours — you can prove control by signing, and payments sent to your identity\nname reach you rather than the gateway. Changing a record afterwards needs your\nown Emercoin node and its fees. With an address no one holds a key to, the\nrecords are sealed: provably unchangeable by anyone until the term ends. If you\nonly want proof that something existed at a given time, do not transfer — a\nrecord held by the gateway is already dated.\n\nOnly records under your own identity (`ai:gh:<github_id>` and its `:mem:`\nrecords) can be moved, and only once they are confirmed. Requires a signed-in\nsession; each record counts as one write against the FREE-tier limits. After\na transfer, register_identity and re-storing a moved hash fail with\n`not_held`; new memories are held by the gateway again.\n\nChanging a record costs a network fee in EMC. If you hold the key and have no\nEMC, set `fee_grant`: the gateway then also sends 0.01 EMC (about fifty value\nupdates) to `to_address` in a separate transaction — once per GitHub account,\nwithin a daily budget. If it is not available the call is refused before\nanything moves (`fee_grant_used`, `fee_grant_unavailable`), so you can decide\nto transfer without it. Do not ask for it with an address no one holds a key\nto: nobody could spend it. Returns the transaction id, the names moved, the\nfee funds if sent, and a plain statement of what changes.",
       "inputSchema": {
         "properties": {
           "to_address": {
@@ -922,6 +922,12 @@
             "description": "Transfer your identity and every live memory at once (up to 100). Use instead of `names`.",
             "title": "Everything",
             "type": "boolean"
+          },
+          "fee_grant": {
+            "default": false,
+            "description": "Also send a small amount of EMC to `to_address` to pay network fees for changing these records later from your own node. Once per account; refused before anything moves if it is not available.",
+            "title": "Fee Grant",
+            "type": "boolean"
           }
         },
         "required": [
@@ -933,6 +939,32 @@
       },
       "outputSchema": {
         "$defs": {
+          "FeeGrantResult": {
+            "description": "Network-fee funds sent with a transfer: the amount in EMC, and the id of\nthe transaction that paid it — null if it could not be sent.",
+            "properties": {
+              "amount": {
+                "title": "Amount",
+                "type": "string"
+              },
+              "txid": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Txid"
+              }
+            },
+            "required": [
+              "amount",
+              "txid"
+            ],
+            "title": "FeeGrantResult",
+            "type": "object"
+          },
           "Quota": {
             "description": "Writes this account has left on its tier. `writes_open_on` (a UTC date)\nappears only while the GitHub account is too new to write.",
             "properties": {
@@ -984,6 +1016,16 @@
             "title": "After",
             "type": "string"
           },
+          "fee_grant": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/FeeGrantResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "quota": {
             "$ref": "#/$defs/Quota"
           }
@@ -994,6 +1036,7 @@
           "names",
           "to_address",
           "after",
+          "fee_grant",
           "quota"
         ],
         "title": "TransferResult",

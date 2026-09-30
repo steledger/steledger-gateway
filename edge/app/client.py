@@ -75,6 +75,12 @@ class AdapterClient:
     async def address_names(self, address: str) -> dict:
         return await self._request("GET", f"/addresses/{quote(address, safe='')}/names")
 
+    # wallet
+    async def send(self, address: str, amount: float, comment: str) -> dict:
+        return await self._request(
+            "POST", "/wallet/send", json={"address": address, "amount": amount, "comment": comment}
+        )
+
     # crypto
     async def verify(self, address: str, signature: str, message: str) -> bool:
         res = await self._request(
