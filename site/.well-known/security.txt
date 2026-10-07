@@ -1,0 +1,4 @@
+Contact: mailto:security@steledger.com
+Expires: 2027-10-01T00:00:00Z
+Preferred-Languages: en
+Canonical: https://api.steledger.com/.well-known/security.txt
