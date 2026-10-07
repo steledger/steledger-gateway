@@ -844,4 +844,15 @@ def streamable_app() -> Starlette:
             and isinstance(route.app, RequireAuthMiddleware)
         ):
             route.app = route.app.app  # drop the 401-for-anonymous gate
+    # With that gate gone no caller is ever 401'd, so none is handed the 401's
+    # resource_metadata pointer: clients derive the metadata URL from the endpoint
+    # instead (RFC 9728 §3.1), which for /mcp is .../oauth-protected-resource/mcp.
+    # Serve the same document there. `resource` stays the root; the SDKs accept a
+    # resource that covers the endpoint's path.
+    prm = "/.well-known/oauth-protected-resource"
+    for route in list(app.routes):
+        if isinstance(route, Route) and route.path == prm:
+            app.routes.append(
+                Route(prm + mcp.settings.streamable_http_path, endpoint=route.endpoint, methods=route.methods)
+            )
     return app
