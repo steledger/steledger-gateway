@@ -11,3 +11,10 @@ reservebalance=0
 rpcuser=emcrpc
 rpcpassword=emcpass
 nameaddress=1
+
+# No PoS minting: this node only serves the gateway and the swap; minting
+# earns nothing here and is a grey zone under hosting AUPs.
+stakegen=0
+# Do not advertise this host's public IP via addr gossip (peers are still
+# found and used normally).
+discover=0
