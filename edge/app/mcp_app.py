@@ -30,7 +30,7 @@ from pydantic import AnyHttpUrl, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-from . import names, transfer
+from . import names, schema_cache, transfer
 from .auth import Principal
 from .client import AdapterClient
 from .config import settings
@@ -265,6 +265,9 @@ class MemoryItem(TypedDict, total=False):
     content_hash: str
     metadata: dict | None
 
+
+# Reuse one checked JSON-Schema validator per tool schema (see schema_cache).
+schema_cache.install()
 
 mcp = FastMCP(
     "steledger",
