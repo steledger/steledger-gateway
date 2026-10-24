@@ -6,7 +6,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from app import main, mcp_app
 from app.auth import Principal, current_principal

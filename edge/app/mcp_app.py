@@ -23,14 +23,15 @@ from typing import Annotated, TypedDict
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.middleware.bearer_auth import RequireAuthMiddleware
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import Icon, ToolAnnotations
 from pydantic import AnyHttpUrl, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-from . import names, schema_cache, transfer
+from . import names, transfer
 from .auth import Principal
 from .client import AdapterClient
 from .config import settings
@@ -116,24 +117,26 @@ def _principal() -> Principal:
     token. Write tools require this (the error rides as `isError: true` tool text)."""
     p = _principal_optional()
     if p is None:
-        raise ValueError(json.dumps(_AUTH_REQUIRED))
+        raise ToolError(json.dumps(_AUTH_REQUIRED))
     return p
+
+
+def _headers(ctx: Context | None):
+    """The HTTP request's headers; empty outside a request (direct calls in tests)."""
+    try:
+        return ctx.headers or {}  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001 — a Context with no active request raises
+        return {}
 
 
 def _client_ip(ctx: Context | None) -> str:
     """The caller's address as Cloudflare reports it; used only, hashed, to rate-limit feedback."""
-    try:
-        h = ctx.request_context.request.headers  # type: ignore[union-attr]
-        return h.get("cf-connecting-ip") or h.get("x-forwarded-for", "").split(",")[0].strip()
-    except Exception:  # noqa: BLE001
-        return ""
+    h = _headers(ctx)
+    return h.get("cf-connecting-ip") or h.get("x-forwarded-for", "").split(",")[0].strip()
 
 
 def _client(ctx: Context | None) -> str:
-    try:
-        return ctx.request_context.request.headers.get("user-agent", "")  # type: ignore[union-attr]
-    except Exception:  # noqa: BLE001
-        return ""
+    return _headers(ctx).get("user-agent", "")
 
 
 async def _record(ctx: Context, tool: str, principal: Principal | None) -> None:
@@ -149,8 +152,7 @@ async def _record_error(ctx: Context | None, tool: str, code: str) -> None:
 # --- output schemas (drive each tool's outputSchema) -----------------------
 
 class NodeStatus(TypedDict, total=False):
-    """Node sync status. Fields are nullable — the MCP SDK fills any absent field
-    with null when serialising structured output, so the schema must allow it."""
+    """Node sync status. Fields are nullable: the node may report any of them as null."""
     version: str | None
     blocks: int | None
     headers: int | None
@@ -161,8 +163,8 @@ class NodeStatus(TypedDict, total=False):
 
 class NvsRecord(TypedDict, total=False):
     """An NVS record (confirmed from the name DB, or pending from the mempool).
-    Fields are nullable: a pending record omits several, and the SDK serialises
-    absent fields as null. `status` says whether the write landed; `expired` says
+    A field that does not apply is left out: a pending record omits several.
+    `status` says whether the write landed; `expired` says
     whether the name is still held — a lapsed record still reads back as
     'confirmed'."""
     status: str | None
@@ -191,8 +193,7 @@ class Quota(TypedDict, total=False):
 
 class WhoAmI(TypedDict, total=False):
     """The current session's identity. `authenticated` is always present; the
-    GitHub-rooted fields are filled only when signed in, and `hint` only when not
-    (nullable so the SDK may serialise the absent ones as null)."""
+    GitHub-rooted fields are present only when signed in, and `hint` only when not."""
     authenticated: bool
     github_id: int | None
     github_login: str | None
@@ -266,10 +267,12 @@ class MemoryItem(TypedDict, total=False):
     metadata: dict | None
 
 
-# Reuse one checked JSON-Schema validator per tool schema (see schema_cache).
-schema_cache.install()
+# Reported as serverInfo.version (mcp 2.x reports "" when it is not given). Keep in
+# step with "version" in mcp_server/server.json: registry probers compare the
+# server-card against the manifest, and a mismatch reads as a stale deployment.
+SERVER_VERSION = "0.3.0"
 
-mcp = FastMCP(
+mcp = MCPServer(
     "steledger",
     instructions=(
         "Give an AI agent a durable identity and a place to anchor what it knows, "
@@ -288,15 +291,12 @@ mcp = FastMCP(
         "running since 2013 — named so that any record here can also be checked "
         "independently in a public block explorer, without trusting this service."
     ),
+    version=SERVER_VERSION,
     # The mark clients may show beside the server (MCP `serverInfo.icons`).
     icons=[
         Icon(src=f"{settings.public_url.rstrip('/')}/icon.svg", mimeType="image/svg+xml", sizes=["any"]),
         Icon(src=f"{settings.public_url.rstrip('/')}/icon-256.png", mimeType="image/png", sizes=["256x256"]),
     ],
-    stateless_http=True,
-    json_response=True,
-    streamable_http_path="/mcp",
-    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     auth_server_provider=oauth_provider,
     auth=AuthSettings(
         issuer_url=AnyHttpUrl(settings.public_url),
@@ -308,8 +308,15 @@ mcp = FastMCP(
         # discover the AS via /.well-known/oauth-protected-resource + the 401's
         # resource_metadata pointer. issuer == resource (combined AS+RS).
         resource_server_url=AnyHttpUrl(settings.public_url),
+        # The issued token is our session JWT, also accepted by the REST API, and
+        # carries no RFC 8707 audience; the verifier checks it. False keeps that, and
+        # is stated so a future SDK default (True in 3.0) cannot change it silently.
+        validate_token_resource=False,
     ),
 )
+
+# Transport settings live on the app factory in mcp 2.x, not on the server.
+MCP_PATH = "/mcp"
 
 
 def _tool(**kwargs):
@@ -317,8 +324,8 @@ def _tool(**kwargs):
 
     `mcp.tool` takes the description straight from `__doc__`, source indentation
     and all, and that text is what an agent reads to decide how to call the tool.
-    mcp ran docstrings through `cleandoc` up to 1.12; current 1.x does not, so do
-    it here — once, for every tool.
+    mcp ran docstrings through `cleandoc` up to 1.12; later 1.x and 2.x do not, so
+    do it here — once, for every tool.
     """
     register = mcp.tool(**kwargs)
 
@@ -329,7 +336,9 @@ def _tool(**kwargs):
         # Refusals reach the agent as the same JSON object the REST API sends
         # (see errors.py), not as "Error executing tool: 429: ..." prose. Every
         # one is counted by code; anything unexpected is logged in full and
-        # reaches the agent as `internal_error`, never as a traceback.
+        # reaches the agent as `internal_error`, never as a traceback. They are
+        # raised as ToolError: mcp 2.x shows the model a ToolError's text but
+        # replaces any other exception's with a bare "Error executing tool <name>".
         @functools.wraps(fn)
         async def wrapped(*args, **kwargs):
             tool, ctx = fn.__name__, kwargs.get("ctx")
@@ -340,14 +349,14 @@ def _tool(**kwargs):
                 cause: Exception = exc
             except AgentError as exc:
                 detail, cause = exc.detail, exc
-            except ValueError as exc:  # already a JSON refusal, e.g. sign-in required
+            except ToolError as exc:  # already a JSON refusal, e.g. sign-in required
                 await _record_error(ctx, tool, code_of(exc))
                 raise
             except Exception as exc:  # noqa: BLE001
                 log.exception("tool %s failed", tool)
                 detail, cause = INTERNAL_ERROR, exc
             await _record_error(ctx, tool, detail["error"])
-            raise ValueError(json.dumps(detail)) from cause
+            raise ToolError(json.dumps(detail)) from cause
 
         return register(wrapped)
 
@@ -458,7 +467,7 @@ async def list_records(
     await _record(ctx, "list_records", p)
     if github_id is None:
         if p is None:
-            raise ValueError(json.dumps({
+            raise ToolError(json.dumps({
                 "error": "github_id_required",
                 "message": "No github_id given, and no signed-in session to take it from.",
                 "how_to_fix": "Pass github_id, or sign in (GitHub OAuth) to list your own records.",
@@ -839,11 +848,19 @@ def streamable_app() -> Starlette:
     token is still validated and exposed via `get_access_token()` when present — which
     is how the write tools enforce auth per-call through `_principal()`. OAuth routes
     and protected-resource metadata are untouched."""
-    app = mcp.streamable_http_app()
+    app = mcp.streamable_http_app(
+        streamable_http_path=MCP_PATH,
+        stateless_http=True,
+        json_response=True,
+        # Must be explicit: mcp 2.x turns DNS-rebinding protection on whenever the
+        # app's `host` is localhost (the default), and every request through
+        # Cloudflare would then be refused with 421.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
     for route in app.routes:
         if (
             isinstance(route, Route)
-            and route.path == mcp.settings.streamable_http_path
+            and route.path == MCP_PATH
             and isinstance(route.app, RequireAuthMiddleware)
         ):
             route.app = route.app.app  # drop the 401-for-anonymous gate
@@ -856,6 +873,6 @@ def streamable_app() -> Starlette:
     for route in list(app.routes):
         if isinstance(route, Route) and route.path == prm:
             app.routes.append(
-                Route(prm + mcp.settings.streamable_http_path, endpoint=route.endpoint, methods=route.methods)
+                Route(prm + MCP_PATH, endpoint=route.endpoint, methods=route.methods)
             )
     return app

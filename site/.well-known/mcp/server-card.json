@@ -25,6 +25,7 @@
         "type": "object"
       },
       "outputSchema": {
+        "description": "Node sync status. Fields are nullable: the node may report any of them as null.",
         "properties": {
           "version": {
             "anyOf": [
@@ -35,7 +36,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Version"
           },
           "blocks": {
@@ -47,7 +47,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Blocks"
           },
           "headers": {
@@ -59,7 +58,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Headers"
           },
           "verificationprogress": {
@@ -71,7 +69,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Verificationprogress"
           },
           "connections": {
@@ -83,7 +80,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Connections"
           },
           "synced": {
@@ -95,7 +91,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Synced"
           }
         },
@@ -128,6 +123,7 @@
         "type": "object"
       },
       "outputSchema": {
+        "description": "An NVS record (confirmed from the name DB, or pending from the mempool).\nA field that does not apply is left out: a pending record omits several.\n`status` says whether the write landed; `expired` says\nwhether the name is still held — a lapsed record still reads back as\n'confirmed'.",
         "properties": {
           "status": {
             "anyOf": [
@@ -138,7 +134,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Status"
           },
           "name": {
@@ -150,7 +145,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Name"
           },
           "value": {
@@ -162,7 +156,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Value"
           },
           "txid": {
@@ -174,7 +167,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Txid"
           },
           "time": {
@@ -186,7 +178,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Time"
           },
           "address": {
@@ -198,7 +189,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Address"
           },
           "address_is_mine": {
@@ -210,7 +200,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Address Is Mine"
           },
           "operation": {
@@ -222,7 +211,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Operation"
           },
           "days_added": {
@@ -234,7 +222,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Days Added"
           },
           "expired": {
@@ -246,7 +233,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Expired"
           },
           "expires_in": {
@@ -258,7 +244,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Expires In"
           },
           "expires_at": {
@@ -270,7 +255,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Expires At"
           },
           "pending_update": {
@@ -282,7 +266,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Pending Update"
           },
           "pending": {
@@ -295,7 +278,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Pending"
           }
         },
@@ -428,6 +410,7 @@
             "type": "object"
           }
         },
+        "description": "A page of records, newest first. Pass `next_offset` back as `offset` for\nthe next page; it is null on the last one.",
         "properties": {
           "github_id": {
             "title": "Github Id",
@@ -515,9 +498,9 @@
             "type": "object"
           }
         },
+        "description": "The current session's identity. `authenticated` is always present; the\nGitHub-rooted fields are present only when signed in, and `hint` only when not.",
         "properties": {
           "authenticated": {
-            "default": null,
             "title": "Authenticated",
             "type": "boolean"
           },
@@ -530,7 +513,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Github Id"
           },
           "github_login": {
@@ -542,7 +524,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Github Login"
           },
           "tariff": {
@@ -554,7 +535,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Tariff"
           },
           "quota": {
@@ -565,8 +545,7 @@
               {
                 "type": "null"
               }
-            ],
-            "default": null
+            ]
           },
           "hint": {
             "anyOf": [
@@ -577,7 +556,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Hint"
           }
         },
@@ -652,6 +630,7 @@
             "type": "object"
           }
         },
+        "description": "The on-chain write: the NVS name written, its transaction id, and the\nwrites this account has left afterwards.",
         "properties": {
           "name": {
             "title": "Name",
@@ -742,6 +721,7 @@
             "type": "object"
           }
         },
+        "description": "The on-chain write: the NVS name written, its transaction id, and the\nwrites this account has left afterwards.",
         "properties": {
           "name": {
             "title": "Name",
@@ -847,6 +827,7 @@
             "type": "object"
           }
         },
+        "description": "One transaction for the whole batch: its id, every name written, and the\nwrites this account has left afterwards.",
         "properties": {
           "txid": {
             "title": "Txid",
@@ -992,6 +973,7 @@
             "type": "object"
           }
         },
+        "description": "One transaction for the whole transfer: its id, the names moved, where\nthey went, what that means from now on, the network-fee funds if asked for\n(else null), and the writes left afterwards.",
         "properties": {
           "txid": {
             "title": "Txid",
@@ -1096,6 +1078,7 @@
         "type": "object"
       },
       "outputSchema": {
+        "description": "Confirmation that the message was stored; nothing answers it automatically.",
         "properties": {
           "received": {
             "title": "Received",

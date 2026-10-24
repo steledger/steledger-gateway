@@ -207,11 +207,11 @@ class Registered(unittest.TestCase):
 
         tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
         tool = tools["transfer_records"]
-        self.assertTrue(tool.annotations.destructiveHint)
-        self.assertEqual(set(tool.inputSchema["required"]), {"to_address", "irreversible"})
-        self.assertIn("after", tool.outputSchema["properties"])
-        self.assertIn("fee_grant", tool.outputSchema["properties"])
-        self.assertIn("fee_grant", tool.inputSchema["properties"])
+        self.assertTrue(tool.annotations.destructive_hint)
+        self.assertEqual(set(tool.input_schema["required"]), {"to_address", "irreversible"})
+        self.assertIn("after", tool.output_schema["properties"])
+        self.assertIn("fee_grant", tool.output_schema["properties"])
+        self.assertIn("fee_grant", tool.input_schema["properties"])
         self.assertFalse(tool.description.startswith(" "))
 
 

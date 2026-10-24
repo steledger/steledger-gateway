@@ -6,7 +6,7 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from app import main, mcp_app
 from app.errors import FEEDBACK_HINT, AgentError
@@ -34,7 +34,7 @@ async def test_mcp_tool_is_open_and_passes_the_sender_through(monkeypatch):
     inbox = FakeInbox()
     monkeypatch.setattr(mcp_app, "_inbox", inbox)
     result = await mcp_app.mcp.call_tool("send_feedback", {"message": "read_record says not_found", "error_code": "not_found"})
-    structured = result[1] if isinstance(result, tuple) else result
+    structured = result.structured_content
     assert structured["received"] is True
     assert inbox.got[0][:2] == ("read_record says not_found", "not_found") and inbox.got[0][3] is None
 

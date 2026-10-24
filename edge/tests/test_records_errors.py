@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from app import mcp_app
 from app.client import AdapterError
@@ -112,7 +112,7 @@ async def test_mcp_list_records_needs_an_id_when_anonymous(monkeypatch):
 async def test_mcp_list_records(monkeypatch):
     monkeypatch.setattr(mcp_app, "_records", _Lister())
     result = await _call("list_records", {"github_id": 3772563, "limit": 1})
-    structured = result[1] if isinstance(result, tuple) else result
+    structured = result.structured_content
     assert structured["total"] == 2 and structured["next_offset"] == 1
     assert structured["records"][0]["content_hash"] == "9f92"
 

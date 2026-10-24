@@ -29,9 +29,6 @@ os.environ.setdefault("EDGE_DEV_LOGIN_ENABLED", "true")
 from edge.app import mcp_app  # noqa: E402
 
 CARD_PATH = Path(__file__).resolve().parent.parent / "site" / ".well-known" / "mcp" / "server-card.json"
-# Keep in step with "version" in mcp_server/server.json — registry probers compare
-# the card against the manifest, and a mismatch reads as a stale deployment.
-SERVER_VERSION = "0.3.0"
 
 
 def _gate(tool) -> None:
@@ -45,7 +42,7 @@ def _gate(tool) -> None:
     assert desc.lower() not in {tool.name.lower(), title.lower()}, (
         f"{tool.name}: tautological description (equals name/title)"
     )
-    assert tool.outputSchema, f"{tool.name}: missing output schema"
+    assert tool.output_schema, f"{tool.name}: missing output schema"
 
 
 async def build_card() -> dict:
@@ -53,16 +50,18 @@ async def build_card() -> dict:
     out = []
     for t in tools:
         _gate(t)
+        # The wire form (camelCase aliases), exactly as tools/list sends it.
+        wire = t.model_dump(mode="json", by_alias=True, exclude_none=True)
         out.append({
-            "name": t.name,
-            "title": t.title,
-            "description": t.description,
-            "inputSchema": t.inputSchema,
-            "outputSchema": t.outputSchema,
-            "annotations": t.annotations and t.annotations.model_dump(exclude_none=True),
+            "name": wire["name"],
+            "title": wire.get("title"),
+            "description": wire.get("description"),
+            "inputSchema": wire["inputSchema"],
+            "outputSchema": wire["outputSchema"],
+            "annotations": wire.get("annotations"),
         })
     return {
-        "serverInfo": {"name": mcp_app.mcp.name, "version": SERVER_VERSION},
+        "serverInfo": {"name": mcp_app.mcp.name, "version": mcp_app.SERVER_VERSION},
         # Discovery + read tools are open; only write tools require the OAuth Bearer.
         "authentication": {"required": False, "schemes": ["oauth2"]},
         # Declared empty on purpose, and not left out. This server takes no user
