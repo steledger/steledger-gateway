@@ -278,6 +278,10 @@ async def address_names(address: str, rpc: EmercoinRPC = Depends(get_rpc)) -> di
 
     Requires the node's name-address index (`nameaddress=1` in emercoin.conf);
     reported as 501 when it isn't enabled.
+
+    The node answers "found nothing" (code -4) both for an address that holds no
+    names and for one that isn't an address at all, so validateaddress tells them
+    apart: an empty list for the first, 400 for the second.
     """
     try:
         return {"address": address, "names": await nvs.names_for_address(rpc, address)}
@@ -287,7 +291,15 @@ async def address_names(address: str, rpc: EmercoinRPC = Depends(get_rpc)) -> di
                 status_code=501,
                 detail=f"name-address index disabled on the node: {exc.message}",
             )
+        if exc.message != "found nothing":
+            raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
+    try:
+        valid = await nvs.address_is_valid(rpc, address)
+    except RPCError as exc:
         raise HTTPException(status_code=502, detail=f"node rpc error: {exc.message}")
+    if not valid:
+        raise HTTPException(status_code=400, detail=f"{address!r} is not a valid Emercoin address")
+    return {"address": address, "names": []}
 
 
 @app.get("/names/filter")
@@ -329,10 +341,16 @@ async def read(name: str, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
 
 @app.post("/verify")
 async def verify(req: VerifyRequest, rpc: EmercoinRPC = Depends(get_rpc)) -> dict:
-    """Verify a signed message (verifymessage) — pure crypto, works while syncing."""
+    """Verify a signed message (verifymessage) — pure crypto, works while syncing.
+
+    A malformed address (-3) or a signature that isn't base64 (-5) is a signature
+    that doesn't verify, not a node fault: it answers `valid: false`.
+    """
     try:
         valid = await rpc.call("verifymessage", req.address, req.signature, req.message)
     except RPCError as exc:
+        if exc.code in (-3, -5):
+            return {"valid": False}
         raise HTTPException(status_code=502, detail=f"verify failed: {exc.message}")
     return {"valid": bool(valid)}
 

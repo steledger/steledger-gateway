@@ -200,6 +200,61 @@ class PublicReads(unittest.TestCase):
         self.assertEqual(holder_code, 200)
 
 
+class NodeAnswers(FakeRPC):
+    """name_scan_address and verifymessage as the production node answers them."""
+
+    def __init__(self, held=None, **kw):
+        super().__init__(**kw)
+        self.held = held or {}
+
+    async def call(self, method, *params):
+        if method == "name_scan_address":
+            self.calls.append((method, *params))
+            if params[0] not in self.held:
+                raise RPCError(-4, "found nothing")
+            return self.held[params[0]]
+        if method == "verifymessage":
+            self.calls.append((method, *params))
+            address, signature, _ = params
+            if address in self.invalid:
+                raise RPCError(-3, "Invalid address")
+            if not signature.endswith("="):
+                raise RPCError(-5, "Malformed base64 encoding")
+            return signature == "good="
+        return await super().call(method, *params)
+
+
+class InputIsNotAFault(unittest.TestCase):
+    """Wrong input from a caller gets an answer about the input, never a 502."""
+
+    def client(self, rpc):
+        main.app.dependency_overrides[main.get_rpc] = lambda: rpc
+        self.addCleanup(main.app.dependency_overrides.clear)
+        return TestClient(main.app)
+
+    def test_an_address_without_names_has_an_empty_list(self):
+        names = [{"name": "ai:gh:1", "value": "{}"}]
+        c = self.client(NodeAnswers(held={"Eheld": names}))
+        self.assertEqual(c.get("/addresses/Eheld/names").json(), {"address": "Eheld", "names": names})
+        r = c.get(f"/addresses/{ADDR}/names")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json(), {"address": ADDR, "names": []})
+
+    def test_names_of_a_non_address_is_a_bad_request(self):
+        r = self.client(NodeAnswers(invalid=["EQtest"])).get("/addresses/EQtest/names")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("not a valid Emercoin address", r.json()["detail"])
+
+    def test_a_signature_that_cannot_be_checked_does_not_verify(self):
+        c = self.client(NodeAnswers(invalid=["EQtest"]))
+        for address, signature, valid in [
+            (ADDR, "good=", True), (ADDR, "bad=", False),
+            (ADDR, "notbase64!!", False), ("EQtest", "good=", False),
+        ]:
+            r = c.post("/verify", json={"address": address, "signature": signature, "message": "m"})
+            self.assertEqual((r.status_code, r.json()), (200, {"valid": valid}), (address, signature))
+
+
 class NodeDown(unittest.TestCase):
     def test_a_refused_connection_is_an_rpc_error_that_says_unreachable(self):
         import httpx
