@@ -19,11 +19,12 @@ import os
 import time
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:8000").rstrip("/")
 
-mcp = FastMCP("steledger")
+mcp = MCPServer("steledger")
 
 # Session token cached across tool calls (set by `login_poll`, or seeded from env).
 _token: str | None = os.environ.get("GATEWAY_JWT")
@@ -34,7 +35,7 @@ _device_intervals: dict[str, int] = {}
 
 def _auth_headers() -> dict[str, str]:
     if not _token:
-        raise RuntimeError("not authenticated: call the `login` tool or set GATEWAY_JWT")
+        raise ToolError("not authenticated: call the `login` tool or set GATEWAY_JWT")
     return {"Authorization": f"Bearer {_token}"}
 
 
@@ -43,8 +44,7 @@ async def node_status() -> dict:
     """Get Emercoin node sync status (blocks, headers, progress, synced)."""
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(f"{GATEWAY_URL}/status")
-        resp.raise_for_status()
-        return resp.json()
+        return _json(resp)
 
 
 @mcp.tool()
@@ -54,8 +54,7 @@ async def login() -> dict:
     `login_poll(session_id)` to finish. No GitHub token needed from the user."""
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(f"{GATEWAY_URL}/auth/github/device/start")
-        resp.raise_for_status()
-        data = resp.json()
+        data = _json(resp)
     _device_intervals[data["session_id"]] = int(data.get("interval", 5))
     return {
         "session_id": data["session_id"],
@@ -106,12 +105,13 @@ async def login_poll(session_id: str, wait_seconds: int = 50) -> dict:
                 continue
             if resp.status_code == 410:
                 _device_intervals.pop(session_id, None)
-                raise RuntimeError("device code expired; call login() again for a fresh code")
+                raise ToolError("device code expired; call login() again for a fresh code")
             if resp.status_code == 403:
                 _device_intervals.pop(session_id, None)
-                raise RuntimeError("authorization denied by the user")
-            resp.raise_for_status()
-            raise RuntimeError(f"unexpected poll status {resp.status_code}: {resp.text}")
+                raise ToolError("authorization denied by the user")
+            if resp.status_code >= 400:
+                _json(resp)
+            raise ToolError(f"unexpected poll status {resp.status_code}: {resp.text}")
 
 
 @mcp.tool()
@@ -121,8 +121,7 @@ async def login_with_token(github_token: str) -> dict:
     global _token
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(f"{GATEWAY_URL}/auth/login", json={"github_token": github_token})
-        resp.raise_for_status()
-        data = resp.json()
+        data = _json(resp)
     _token = data["access_token"]
     return {"github_id": data["github_id"], "github_login": data["github_login"]}
 
@@ -139,8 +138,7 @@ async def register_identity(address: str, metadata: dict | None = None) -> dict:
             headers=_auth_headers(),
             json={"address": address, "metadata": metadata or {}},
         )
-        resp.raise_for_status()
-        return resp.json()
+        return _json(resp)
 
 
 @mcp.tool()
@@ -155,8 +153,7 @@ async def store_memory(content_hash: str, metadata: dict | None = None) -> dict:
             headers=_auth_headers(),
             json={"content_hash": content_hash, "metadata": metadata or {}},
         )
-        resp.raise_for_status()
-        return resp.json()
+        return _json(resp)
 
 
 @mcp.tool()
@@ -174,8 +171,7 @@ async def store_memory_batch(records: list[dict]) -> dict:
             headers=_auth_headers(),
             json={"records": records},
         )
-        resp.raise_for_status()
-        return resp.json()
+        return _json(resp)
 
 
 @mcp.tool()
@@ -207,7 +203,7 @@ def _json(resp: httpx.Response) -> dict:
             detail = resp.json().get("detail")
         except ValueError:
             detail = resp.text
-        raise RuntimeError(json.dumps(detail) if isinstance(detail, dict) else f"{resp.status_code}: {detail}")
+        raise ToolError(json.dumps(detail) if isinstance(detail, dict) else f"{resp.status_code}: {detail}")
     return resp.json()
 
 
