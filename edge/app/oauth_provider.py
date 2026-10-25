@@ -16,6 +16,7 @@ survive an edge redeploy (clients stay registered, users stay signed in).
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import time
 
@@ -38,12 +39,18 @@ from .config import settings
 from .github import GitHubOAuth
 from .stats import Stats
 
+log = logging.getLogger("edge.oauth")
+
 MCP_SCOPE = "agent"
 
 _CLIENT_TTL = 90 * 86400   # registered clients persist ~90 days
 _STATE_TTL = 600           # pending authorize state: 10 min
 _CODE_TTL = 300            # authorization code: 5 min
 _REFRESH_TTL = 30 * 86400  # refresh token: 30 days
+
+
+class StaleState(ValueError):
+    """The sign-in's state is unknown: expired, already used, or never issued."""
 
 
 class GitHubOAuthProvider(
@@ -105,21 +112,37 @@ class GitHubOAuthProvider(
 
     async def complete_github(self, code: str, state: str) -> str:
         """Called by /auth/github/callback for MCP-flow states. Returns the
-        redirect URI back to the MCP client carrying our authorization code."""
+        redirect URI back to the MCP client: with our authorization code, or, if
+        GitHub would not finish the sign-in, with an OAuth error (RFC 6749
+        §4.1.2.1) so the client can say so instead of leaving the user on a 500."""
         raw = await self._redis.getdel(f"oauth:state:{state}")
         if not raw:
             await self.count("state_expired")
-            raise ValueError("invalid or expired state")
+            raise StaleState("invalid or expired state")
         data = json.loads(raw)
         try:
             token = await self._github.exchange_code(code)
             access = token.get("access_token")
-            if not access:
-                raise ValueError(f"github code exchange failed: {token.get('error', 'unknown')}")
-            gh_id, gh_login, gh_created = await self._github.fetch_user(access)
-        except Exception:
+            if access:
+                gh_id, gh_login, gh_created = await self._github.fetch_user(access)
+        except Exception as exc:  # noqa: BLE001 — GitHub down or answering garbage
+            log.warning("github sign-in failed: %r", exc)
             await self.count("github_failed")
-            raise
+            return construct_redirect_uri(
+                data["redirect_uri"], error="temporarily_unavailable",
+                error_description="GitHub could not be reached to finish the sign-in. Try again shortly.",
+                state=state,
+            )
+        if not access:
+            # GitHub refused the code: reused, expired, or not one it issued.
+            reason = token.get("error", "unknown")
+            log.info("github refused the sign-in code: %s", reason)
+            await self.count("github_failed")
+            return construct_redirect_uri(
+                data["redirect_uri"], error="access_denied",
+                error_description=f"GitHub did not accept the sign-in ({reason}). Start the sign-in again.",
+                state=state,
+            )
         await self.count("github_ok")
         new_code = f"mcp_{secrets.token_hex(16)}"
         ac = AuthorizationCode(

@@ -27,6 +27,7 @@ from .challenge import ChallengeStore
 from .client import AdapterClient, AdapterError
 from .config import settings
 from .github import GitHubOAuth
+from .oauth_provider import StaleState
 from .oauth_state import OAuthStateStore
 from .ratelimit import RateLimiter
 from .errors import INTERNAL_ERROR, AgentError, from_adapter
@@ -425,7 +426,12 @@ async def github_web_callback(
         if error or not code:
             await mcp_oauth.count("github_denied")
             return HTMLResponse(web.error_page(error or "authorization failed"), status_code=400)
-        return RedirectResponse(await mcp_oauth.complete_github(code, state), status_code=302)
+        try:
+            return RedirectResponse(await mcp_oauth.complete_github(code, state), status_code=302)
+        except StaleState:
+            # The same callback opened twice at once: the other request took it.
+            return HTMLResponse(web.error_page("This sign-in link was already used or has expired. "
+                                               "Start the sign-in again from your MCP client."), status_code=400)
 
     if not settings.web_login_enabled:
         # With web login off, every sign-in here is the MCP flow: a state it no
