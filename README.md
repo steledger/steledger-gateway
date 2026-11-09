@@ -31,7 +31,7 @@ application built on top of that node. You can run the **whole stack**, use the
 
 | Component | Path | Role |
 |-----------|------|------|
-| **node** (`emc`) | `node/` | Emercoin core — holds the chain + hot-wallet; internal-only, authorizes nothing. |
+| **node** (`emc`) | `node/` (config only) | Emercoin core (`emercoin/core` image, built by [emercoin/emercoin](https://github.com/emercoin/emercoin)) — holds the chain + hot-wallet; internal-only, authorizes nothing. |
 | **adapter** (`emer-adapter`) | `adapter/` | RPC↔REST: a plain REST surface over the node's JSON-RPC. Internal, gated by `X-Internal-Key`. |
 | **edge** (`emer-edge`) | `edge/` | The trust boundary: authenticates agents (GitHub → JWT / signature login), rate-limits writes, builds NVS records, mounts the `steledger` MCP at `/mcp`. |
 | **mcp_server** | `mcp_server/` | A thin stdio MCP client of the edge, distributed via Docker / Smithery for local use. |
@@ -78,9 +78,9 @@ Initial sync takes a few hours, but the RPC is usable right away. By default por
 - address: **127.0.0.1** · user: **emcrpc** · password: **emcpass**
 - method: **POST**, e.g. body `{"method": "getinfo"}`
 
-**Change the RPC password:**
+**Change the RPC password:** set `rpcpassword` in `node/emercoin.conf` (mounted
+read-only into the container), then restart the node:
 ```bash
-docker compose -f deploy/docker-compose.yaml exec emc bash changepass.sh
 docker compose -f deploy/docker-compose.yaml restart emc
 ```
 

@@ -36,3 +36,7 @@
       (PKI/NVS), не релизный. Опц. альтернатива: пин SHA256 тарбола (TOFU) —
       `c4b0f4551956a14e33ebe7f9d88479db3a0b92fd20649b8b4a46f7c69ea68db0` для 0.8.5.
 - [x] Создать docker для Emercoin  
+- [x] **Node-образ переехал в emercoin/emercoin** (2026-11-09): с 0.8.6 `emercoin/core`
+      (amd64+arm64) собирает релизный CI самого emercoin (`docker.yml`). Здесь убраны
+      node/Dockerfile и файлы сборки, compose → `emercoin/core:0.8.6`;
+      emercoin/emer-ai-tools заархивирован. Пункт выше — история.

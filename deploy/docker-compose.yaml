@@ -41,7 +41,7 @@ x-edge-env: &edge-env
 
 services:
   emc:
-    image: emercoin/core:0.8.5
+    image: emercoin/core:0.8.6
     container_name: emc
     volumes:
       - blockchain_data:/srv/emercoind

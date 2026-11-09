@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Manual full redeploy on the droplet. Use after a node-v* release or any compose/
+# Manual full redeploy on the droplet. Use after an emercoin/core bump or any compose/
 # Caddyfile/.env change. edge & adapter deploy themselves on release (CI -> SSH ->
 # deploy-service.sh), so for those you don't need this — it's the all-services path.
 #

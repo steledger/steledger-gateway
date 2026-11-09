@@ -105,7 +105,6 @@ touches their source dir (path-filtered), so small fixes ship without a tag.
 | `emercoin/rest-api` | `adapter/` | `publish-rest-api.yml` | `rest-api-v*` (e.g. `rest-api-v0.0.1`) | amd64+arm64 |
 | `emercoin/edge` | `edge/` | `publish-edge.yml` | `edge-v*` (e.g. `edge-v0.0.1`) | amd64+arm64 |
 | `emercoin/mcp` | `mcp_server/` | `publish-mcp.yml` | `mcp-v*` (e.g. `mcp-v0.1.0`) | amd64+arm64 |
-| `emercoin/core` | `node/` | `publish-node.yml` | `node-v*` (e.g. `node-v0.8.5`) | amd64 |
 
 `emercoin/mcp` is the stdio MCP server (referenced by `mcp_server/server.json` in
 the official MCP registry; agents run it via `docker run -i`).
@@ -114,16 +113,16 @@ the official MCP registry; agents run it via `docker run -i`).
   agent-specific), so other services pull it instead of vendoring source.
 - **`emercoin/edge`** — the agent-facing IAM layer; the public deploy pulls it
   (and auto-updates via Watchtower) rather than building on the box.
-- **`emercoin/core`** — the wallet/node itself; `node-v*` publishes
-  `emercoin/core:<EMER_DISTR_VERSION>` + `latest` (the tag is read from
-  `node/Dockerfile`). amd64 only (the emercoind tarball is x86_64). A manual
-  `workflow_dispatch` publishes only a `<ver>-test` tag for verification — it
-  never overwrites `:latest`. **A `node-v*` release overwrites the official
-  image; verify the `-test` build first.**
+- **`emercoin/core`** (the wallet/node) is **not built here**. Since 0.8.6 it is
+  built and published by the release CI of
+  [emercoin/emercoin](https://github.com/emercoin/emercoin) (`docker.yml`,
+  amd64+arm64). This repo only pins its tag in the compose files and keeps the
+  node config (`node/emercoin.conf.example`; the real `node/emercoin.conf` is
+  mounted read-only).
 
 The USDT→EMC exchanger (separate repo) runs both:
 ```
-image: emercoin/core:0.8.5      # the wallet/node
+image: emercoin/core:0.8.6      # the wallet/node
 image: emercoin/rest-api:0.0.1  # RPC↔REST in front of it
 ```
 
@@ -133,14 +132,15 @@ The single droplet runs `deploy/docker-compose.droplet.yaml` (emc + adapter + ed
 the box; it pulls from the registry — which keeps the origin firewalled to
 Cloudflare with no inbound deploy channel.
 
-- **CI**: pushing `rest-api-v*` / `edge-v*` / `node-v*` builds & pushes the
+- **CI**: pushing `rest-api-v*` / `edge-v*` / `mcp-v*` builds & pushes the
   matching image (moving its `:latest`).
 - **CD (hybrid)**: **Watchtower** auto-updates only the label-enabled containers —
   `adapter` and `edge` — when their `:latest` moves (hourly poll). The node
   (`emercoin/core`) is intentionally **not** labelled: it never auto-updates,
-  because a `node-v*` release overwrites the official wallet image and must be
-  rolled out deliberately. Apply a node release (or any compose/Caddyfile/.env
-  change) with `deploy/redeploy.sh` (git pull → compose pull → up -d).
+  because a node upgrade must be rolled out deliberately: bump the
+  `emercoin/core` tag in `docker-compose.droplet.yaml` on main and the sync timer
+  re-applies compose. `deploy/redeploy.sh` (git pull → compose pull → up -d) is the
+  manual all-services path for any compose/Caddyfile/.env change.
 - Secrets (`deploy/.env`) and `node/emercoin.conf` stay on the box (gitignored).
 
 ## Adapter endpoints (internal REST, no user auth)
@@ -178,7 +178,7 @@ Cloudflare with no inbound deploy channel.
   `ai:dns:<domain>`, `ai:did:<method>:<id>`, etc. so the "neutral cross-org
   identity" claim isn't tied to a single provider (GitHub = Microsoft).
 - **Adapter ↔ edge split (done, 2026-06-11).** Two FastAPI apps now; edge is an
-  HTTP client of the adapter. Layout: `node/` (image build), `adapter/`, `edge/`,
+  HTTP client of the adapter. Layout: `node/` (node config), `adapter/`, `edge/`,
   `mcp_server/`, `deploy/` (compose with dev|prod profiles). Next: the two layers
   could become separate repos / hosts (wallet+adapter at home, edge on a VPS) —
   the X-Internal-Key gate already supports that topology.

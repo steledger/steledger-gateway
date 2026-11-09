@@ -13,7 +13,7 @@ Check the node is healthy and synced:
 
 ```bash
 curl https://api.steledger.com/status
-# {"version":"v0.8.5emc","blocks":...,"synced":true,...}
+# {"version":"v0.8.6emc","blocks":...,"synced":true,...}
 ```
 
 ## 1. Authenticate
